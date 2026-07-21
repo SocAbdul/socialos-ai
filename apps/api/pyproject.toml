@@ -20,7 +20,7 @@ dependencies = [
 [dependency-groups]
 dev = [
   "aiosqlite>=0.21,<1",
-  "mypy>=1.16,<2",
+  "mypy>=1.16,<3",
   "pytest>=8.4,<9",
   "pytest-asyncio>=1.0,<2",
   "pytest-cov>=6.2,<7",
