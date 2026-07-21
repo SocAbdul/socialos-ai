@@ -1,0 +1,51 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-images:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target production -t socialos-api:${{ github.sha }} apps/api
+      - run: docker build --target production -t socialos-web:${{ github.sha }} apps/web
+
+  deploy-staging:
+    needs: build-images
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deployment contract
+        run: |
+          echo "Staging deploy hook is ready."
+          echo "Connect AWS OIDC, ECR, ECS service names and Terraform state before enabling real deployment."
+
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deployment contract
+        run: |
+          echo "Production deploy requires GitHub Environment approval."
+          echo "Connect AWS OIDC, ECR, ECS service names and Terraform state before enabling real deployment."
