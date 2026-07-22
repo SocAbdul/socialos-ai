@@ -1,7 +1,19 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import AnyHttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+Environment = Literal["local", "test", "staging", "production"]
+AuthMode = Literal["development", "clerk"]
+
+_MIN_TOKEN_ENCRYPTION_KEY_LENGTH = 32
+_INSECURE_TOKEN_ENCRYPTION_KEYS = frozenset(
+    {
+        "replace-with-a-long-random-secret",
+        "local-development-token-encryption-key",
+    }
+)
 
 
 class Settings(BaseSettings):
@@ -12,11 +24,11 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "SocialOS AI"
-    environment: str = "local"
+    environment: Environment = "local"
     log_level: str = "INFO"
     database_url: str = "postgresql+asyncpg://socialos:socialos@localhost:5432/socialos"
     redis_url: str = "redis://localhost:6379/0"
-    auth_mode: str = "development"
+    auth_mode: AuthMode = "development"
     clerk_jwks_url: AnyHttpUrl | None = None
     clerk_issuer: str | None = None
     clerk_audience: str | None = None
@@ -25,7 +37,7 @@ class Settings(BaseSettings):
     token_encryption_key: str | None = None
     meta_app_id: str | None = None
     meta_app_secret: str | None = None
-    meta_redirect_uri: str = "http://localhost:8000/api/v1/platform-connections/meta/callback"
+    meta_redirect_uri: str = "http://localhost:3000/integrations/meta/callback"
     meta_graph_api_version: str = "v25.0"
     ai_provider: str = "local"
     ai_model: str = "socialos-local-v1"
@@ -41,15 +53,31 @@ class Settings(BaseSettings):
         ]
 
 
+def _validate_runtime_security(settings: Settings) -> None:
+    if settings.environment in {"local", "test"}:
+        return
+
+    if settings.auth_mode == "development":
+        raise RuntimeError("Development authentication is forbidden outside local/test")
+
+    key = settings.token_encryption_key
+    if not key:
+        raise RuntimeError("TOKEN_ENCRYPTION_KEY is required outside local/test")
+    if key in _INSECURE_TOKEN_ENCRYPTION_KEYS:
+        raise RuntimeError("TOKEN_ENCRYPTION_KEY must not use a documented example value")
+    if len(key) < _MIN_TOKEN_ENCRYPTION_KEY_LENGTH:
+        raise RuntimeError(
+            "TOKEN_ENCRYPTION_KEY must contain at least "
+            f"{_MIN_TOKEN_ENCRYPTION_KEY_LENGTH} characters"
+        )
+
+
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    if settings.environment not in {"local", "test"} and settings.auth_mode == "development":
-        raise RuntimeError("Development authentication is forbidden outside local/test")
     if settings.auth_mode == "clerk" and (
         settings.clerk_jwks_url is None or not settings.clerk_issuer
     ):
         raise RuntimeError("Clerk authentication requires CLERK_JWKS_URL and CLERK_ISSUER")
-    if settings.environment not in {"local", "test"} and not settings.token_encryption_key:
-        raise RuntimeError("TOKEN_ENCRYPTION_KEY is required outside local/test")
+    _validate_runtime_security(settings)
     return settings

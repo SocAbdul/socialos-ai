@@ -40,6 +40,21 @@ def test_rejects_untrusted_authorized_party() -> None:
         )
 
 
+def test_rejects_missing_authorized_party_when_allowlist_is_configured() -> None:
+    with pytest.raises(InvalidIdentityTokenError, match="authorized party"):
+        verifier()._actor_from_claims(
+            {
+                "sub": "user_123",
+                "o": {"id": "org_123", "rol": "member"},
+            }
+        )
+
+
 def test_requires_active_organization() -> None:
     with pytest.raises(InvalidIdentityTokenError, match="active organization"):
-        verifier()._actor_from_claims({"sub": "user_123"})
+        verifier()._actor_from_claims(
+            {
+                "sub": "user_123",
+                "azp": "https://app.socialos.ai",
+            }
+        )

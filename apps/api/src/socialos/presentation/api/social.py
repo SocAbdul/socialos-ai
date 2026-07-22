@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from socialos.application.common.auth import Actor
@@ -116,18 +116,17 @@ async def meta_authorize(
     return AuthorizationUrlResponse(url=url)
 
 
-@router.get(
+@router.post(
     "/platform-connections/meta/callback",
 )
 async def meta_callback(
-    code: Annotated[str, Query(min_length=1)],
-    state: Annotated[str, Query(min_length=1)],
+    request: MetaOAuthCallbackRequest,
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> PlatformConnectionListResponse:
     try:
         async with session_factory() as session:
             record = await OAuthStateStore(session).consume(
-                state=state,
+                state=request.state,
                 user_id=actor.user_id,
                 provider="meta",
                 redirect_uri=get_settings().meta_redirect_uri,
@@ -138,7 +137,7 @@ async def meta_callback(
             SqlAlchemyUnitOfWork,
             _meta_provider(),
             _cipher(),
-        ).execute(actor, workspace_id, code)
+        ).execute(actor, workspace_id, request.code)
     except (ValueError, ConnectionAuthorizationError, OAuthStateError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PlatformConnectionListResponse(
@@ -360,6 +359,13 @@ class BrandProfileResponse(BaseModel):
 
 class AuthorizationUrlResponse(BaseModel):
     url: str
+
+
+class MetaOAuthCallbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1)
+    state: str = Field(min_length=1)
 
 
 class PlatformConnectionResponse(BaseModel):

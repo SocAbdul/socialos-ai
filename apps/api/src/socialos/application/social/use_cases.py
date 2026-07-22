@@ -140,8 +140,7 @@ class BuildMetaAuthorizationUrl:
             "instagram_basic",
             "instagram_content_publish",
         ]
-        signed_state = f"{workspace_id}:{actor.organization_id}:{state}"
-        return self._provider.authorize(signed_state, scopes)
+        return self._provider.authorize(state, scopes)
 
 
 class CompleteMetaOAuth:

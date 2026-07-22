@@ -6,25 +6,38 @@ on:
     branches: [main]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      deploy_production:
+        description: Run the production deployment contract after staging
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
-  group: cd-${{ github.ref }}
+  group: cd-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
   build-images:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     outputs:
-      image_tag: ${{ github.sha }}
+      image_tag: ${{ steps.revision.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
-      - run: docker build --target production -t socialos-api:${{ github.sha }} apps/api
-      - run: docker build --target production -t socialos-web:${{ github.sha }} apps/web
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - name: Record verified revision
+        id: revision
+        run: echo "image_tag=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
+      - run: docker build --target production -t socialos-api:${DEPLOY_SHA} apps/api
+      - run: docker build --target production -t socialos-web:${DEPLOY_SHA} apps/web
 
   deploy-staging:
     needs: build-images
@@ -33,19 +46,28 @@ jobs:
       name: staging
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build-images.outputs.image_tag }}
       - name: Deployment contract
+        env:
+          IMAGE_TAG: ${{ needs.build-images.outputs.image_tag }}
         run: |
-          echo "Staging deploy hook is ready."
+          echo "Staging deploy hook is ready for verified revision ${IMAGE_TAG}."
           echo "Connect AWS OIDC, ECR, ECS service names and Terraform state before enabling real deployment."
 
   deploy-production:
-    needs: deploy-staging
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production
+    needs: [build-images, deploy-staging]
     runs-on: ubuntu-latest
     environment:
       name: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build-images.outputs.image_tag }}
       - name: Deployment contract
+        env:
+          IMAGE_TAG: ${{ needs.build-images.outputs.image_tag }}
         run: |
-          echo "Production deploy requires GitHub Environment approval."
+          echo "Production deploy requires GitHub Environment approval for revision ${IMAGE_TAG}."
           echo "Connect AWS OIDC, ECR, ECS service names and Terraform state before enabling real deployment."
