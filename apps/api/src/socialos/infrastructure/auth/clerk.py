@@ -50,11 +50,7 @@ class ClerkTokenVerifier:
             raise InvalidIdentityTokenError("Organization enrollment is required")
 
         authorized_party = claims.get("azp")
-        if (
-            self._authorized_parties
-            and authorized_party is not None
-            and authorized_party not in self._authorized_parties
-        ):
+        if self._authorized_parties and authorized_party not in self._authorized_parties:
             raise InvalidIdentityTokenError("Token authorized party is not allowed")
 
         user_id = claims.get("sub")
