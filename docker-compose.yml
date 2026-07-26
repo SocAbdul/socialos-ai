@@ -85,11 +85,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - celery -A socialos.infrastructure.tasks.celery_app inspect ping --timeout=5 | grep -q pong
-      interval: 15s
-      timeout: 8s
-      retries: 5
-      start_period: 20s
+        - /opt/venv/bin/celery -A socialos.infrastructure.tasks.celery_app inspect ping --timeout=20 | grep -q pong
+      interval: 30s
+      timeout: 45s
+      retries: 3
+      start_period: 30s
 
   web:
     build:
@@ -108,17 +108,20 @@ services:
     volumes:
       - ./apps/web:/app
       - web_node_modules:/app/node_modules
+      - web_next_cache:/app/.next
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000"]
+      test:
+        ["CMD", "wget", "--quiet", "--tries=1", "--timeout=30", "--spider", "http://127.0.0.1:3000"]
       interval: 10s
-      timeout: 3s
+      timeout: 35s
       retries: 5
-      start_period: 20s
+      start_period: 90s
 
 volumes:
   postgres_data:
   redis_data:
   web_node_modules:
+  web_next_cache:

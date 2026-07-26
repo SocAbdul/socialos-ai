@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
@@ -41,6 +41,21 @@ class Settings(BaseSettings):
     meta_graph_api_version: str = "v25.0"
     ai_provider: str = "local"
     ai_model: str = "socialos-local-v1"
+
+    @field_validator(
+        "clerk_jwks_url",
+        "clerk_issuer",
+        "clerk_audience",
+        "token_encryption_key",
+        "meta_app_id",
+        "meta_app_secret",
+        mode="before",
+    )
+    @classmethod
+    def empty_string_as_none(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
 
     @property
     def web_origin_list(self) -> list[str]:

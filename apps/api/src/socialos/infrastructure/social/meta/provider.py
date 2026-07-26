@@ -52,6 +52,17 @@ class MetaProviderConfigurationError(RuntimeError):
 class MetaProviderError(RuntimeError):
     """Raised when Meta Graph API rejects an operation."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        error_code: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.error_code = error_code
+
 
 class MetaSocialProvider:
     provider_name = "meta"
@@ -390,8 +401,20 @@ def _json_or_raise(response: httpx.Response) -> dict[str, object]:
     if response.status_code >= 400:
         error = payload.get("error", {})
         message = error.get("message", response.text) if isinstance(error, dict) else response.text
-        raise MetaProviderError(str(message))
+        raw_code = error.get("code") if isinstance(error, dict) else None
+        error_code = str(raw_code) if raw_code is not None else None
+        raise MetaProviderError(
+            str(message),
+            retryable=_is_retryable_meta_error(response.status_code, error_code),
+            error_code=error_code,
+        )
     return cast(dict[str, object], payload)
+
+
+def _is_retryable_meta_error(status_code: int, error_code: str | None) -> bool:
+    if status_code >= 500:
+        return True
+    return error_code in {"1", "2", "4", "17", "32", "613"}
 
 
 def _expires_at(expires_in: object) -> datetime | None:

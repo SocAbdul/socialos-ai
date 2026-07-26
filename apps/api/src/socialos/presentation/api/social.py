@@ -65,248 +65,6 @@ def _meta_provider() -> MetaSocialProvider:
     return MetaSocialProvider(get_settings(), _cipher())
 
 
-@router.post("/workspaces", status_code=status.HTTP_201_CREATED)
-async def create_workspace(
-    request: CreateWorkspaceRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> WorkspaceResponse:
-    workspace = await CreateWorkspace(SqlAlchemyUnitOfWork).execute(
-        actor, CreateWorkspaceCommand(name=request.name)
-    )
-    return WorkspaceResponse.from_domain(workspace)
-
-
-@router.post(
-    "/workspaces/{workspace_id}/brand-profiles",
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_brand_profile(
-    workspace_id: UUID,
-    request: CreateBrandProfileRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> BrandProfileResponse:
-    brand = await CreateBrandProfile(SqlAlchemyUnitOfWork).execute(
-        actor,
-        CreateBrandProfileCommand(
-            workspace_id=workspace_id,
-            name=request.name,
-            voice=request.voice,
-            audience=request.audience,
-        ),
-    )
-    return BrandProfileResponse.from_domain(brand)
-
-
-@router.get(
-    "/workspaces/{workspace_id}/platform-connections/meta/authorize",
-)
-async def meta_authorize(
-    workspace_id: UUID,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> AuthorizationUrlResponse:
-    async with session_factory() as session:
-        state = await OAuthStateStore(session).create(
-            workspace_id=workspace_id,
-            user_id=actor.user_id,
-            provider="meta",
-            redirect_uri=get_settings().meta_redirect_uri,
-        )
-        await session.commit()
-    url = await BuildMetaAuthorizationUrl(_meta_provider()).execute(actor, workspace_id, state)
-    return AuthorizationUrlResponse(url=url)
-
-
-@router.post(
-    "/platform-connections/meta/callback",
-)
-async def meta_callback(
-    request: MetaOAuthCallbackRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> PlatformConnectionListResponse:
-    try:
-        async with session_factory() as session:
-            record = await OAuthStateStore(session).consume(
-                state=request.state,
-                user_id=actor.user_id,
-                provider="meta",
-                redirect_uri=get_settings().meta_redirect_uri,
-            )
-            await session.commit()
-        workspace_id = record.workspace_id
-        connections = await CompleteMetaOAuth(
-            SqlAlchemyUnitOfWork,
-            _meta_provider(),
-            _cipher(),
-        ).execute(actor, workspace_id, request.code)
-    except (ValueError, ConnectionAuthorizationError, OAuthStateError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return PlatformConnectionListResponse(
-        items=[PlatformConnectionResponse.from_domain(connection) for connection in connections]
-    )
-
-
-@router.get(
-    "/workspaces/{workspace_id}/platform-connections",
-)
-async def list_platform_connections(
-    workspace_id: UUID,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> PlatformConnectionListResponse:
-    connections = await ListPlatformConnections(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
-    return PlatformConnectionListResponse(
-        items=[PlatformConnectionResponse.from_domain(connection) for connection in connections]
-    )
-
-
-@router.get("/workspaces/{workspace_id}/social-accounts")
-async def list_social_accounts(
-    workspace_id: UUID,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> SocialAccountListResponse:
-    accounts = await ListSocialAccounts(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
-    return SocialAccountListResponse(
-        items=[SocialAccountResponse.from_domain(account) for account in accounts]
-    )
-
-
-@router.post(
-    "/workspaces/{workspace_id}/campaigns",
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_campaign(
-    workspace_id: UUID,
-    request: CreateCampaignRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> CampaignResponse:
-    campaign = await CreateCampaign(SqlAlchemyUnitOfWork).execute(
-        actor,
-        CreateCampaignCommand(
-            workspace_id=workspace_id,
-            brand_profile_id=request.brand_profile_id,
-            name=request.name,
-        ),
-    )
-    return CampaignResponse.from_domain(campaign)
-
-
-@router.post(
-    "/workspaces/{workspace_id}/content-items",
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_content_item(
-    workspace_id: UUID,
-    request: CreateContentItemRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> ContentItemResponse:
-    item = await CreateContentItem(SqlAlchemyUnitOfWork).execute(
-        actor,
-        CreateContentItemCommand(
-            workspace_id=workspace_id,
-            campaign_id=request.campaign_id,
-            body=request.body,
-        ),
-    )
-    return ContentItemResponse.from_domain(item)
-
-
-@router.post(
-    "/workspaces/{workspace_id}/ai/adapt-for-platform",
-)
-async def adapt_for_platform(
-    workspace_id: UUID,
-    request: AdaptContentRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> AIGenerationResponse:
-    generation = await AdaptContentForPlatform(
-        SqlAlchemyUnitOfWork,
-        LocalAIContentService(),
-    ).execute(actor, workspace_id, request.text, request.platform)
-    return AIGenerationResponse.from_domain(generation)
-
-
-@router.post(
-    "/workspaces/{workspace_id}/media-assets",
-    status_code=status.HTTP_201_CREATED,
-)
-async def register_media_asset(
-    workspace_id: UUID,
-    request: RegisterMediaAssetRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> MediaAssetResponse:
-    asset = await RegisterMediaAsset(SqlAlchemyUnitOfWork).execute(
-        actor,
-        RegisterMediaAssetCommand(
-            workspace_id=workspace_id,
-            media_type=request.media_type,
-            storage_url=request.storage_url,
-            content_type=request.content_type,
-            checksum_sha256=request.checksum_sha256,
-        ),
-    )
-    return MediaAssetResponse.from_domain(asset)
-
-
-@router.post(
-    "/workspaces/{workspace_id}/publications",
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_publication(
-    workspace_id: UUID,
-    request: CreatePublicationRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> PublicationResponse:
-    try:
-        publication = await CreatePublication(SqlAlchemyUnitOfWork).execute(
-            actor,
-            CreatePublicationCommand(
-                workspace_id=workspace_id,
-                content_item_id=request.content_item_id,
-                platform_connection_id=request.platform_connection_id,
-                social_account_id=request.social_account_id,
-                platform=request.platform,
-                caption=request.caption,
-                media_asset_id=request.media_asset_id,
-            ),
-        )
-    except ApplicationNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return PublicationResponse.from_domain(publication)
-
-
-@router.get("/workspaces/{workspace_id}/publications")
-async def list_publications(
-    workspace_id: UUID,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> PublicationListResponse:
-    publications = await ListPublications(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
-    return PublicationListResponse(
-        items=[PublicationResponse.from_domain(publication) for publication in publications]
-    )
-
-
-@router.post("/publications/{publication_id}/schedule")
-async def schedule_publication(
-    publication_id: UUID,
-    request: SchedulePublicationRequest,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> PublicationResponse:
-    publication = await SchedulePublication(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
-        actor, publication_id, request.run_at
-    )
-    return PublicationResponse.from_domain(publication)
-
-
-@router.post("/publications/{publication_id}/publish-now")
-async def publish_now(
-    publication_id: UUID,
-    actor: Annotated[Actor, Depends(get_actor)],
-) -> PublicationResponse:
-    publication = await PublishPublicationNow(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
-        actor, publication_id
-    )
-    return PublicationResponse.from_domain(publication)
-
-
 class CreateWorkspaceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -594,3 +352,245 @@ class PublicationResponse(BaseModel):
 
 class PublicationListResponse(BaseModel):
     items: list[PublicationResponse]
+
+
+@router.post("/workspaces", status_code=status.HTTP_201_CREATED)
+async def create_workspace(
+    request: CreateWorkspaceRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> WorkspaceResponse:
+    workspace = await CreateWorkspace(SqlAlchemyUnitOfWork).execute(
+        actor, CreateWorkspaceCommand(name=request.name)
+    )
+    return WorkspaceResponse.from_domain(workspace)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/brand-profiles",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_brand_profile(
+    workspace_id: UUID,
+    request: CreateBrandProfileRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> BrandProfileResponse:
+    brand = await CreateBrandProfile(SqlAlchemyUnitOfWork).execute(
+        actor,
+        CreateBrandProfileCommand(
+            workspace_id=workspace_id,
+            name=request.name,
+            voice=request.voice,
+            audience=request.audience,
+        ),
+    )
+    return BrandProfileResponse.from_domain(brand)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/platform-connections/meta/authorize",
+)
+async def meta_authorize(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> AuthorizationUrlResponse:
+    async with session_factory() as session:
+        state = await OAuthStateStore(session).create(
+            workspace_id=workspace_id,
+            user_id=actor.user_id,
+            provider="meta",
+            redirect_uri=get_settings().meta_redirect_uri,
+        )
+        await session.commit()
+    url = await BuildMetaAuthorizationUrl(_meta_provider()).execute(actor, workspace_id, state)
+    return AuthorizationUrlResponse(url=url)
+
+
+@router.post(
+    "/platform-connections/meta/callback",
+)
+async def meta_callback(
+    request: MetaOAuthCallbackRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PlatformConnectionListResponse:
+    try:
+        async with session_factory() as session:
+            record = await OAuthStateStore(session).consume(
+                state=request.state,
+                user_id=actor.user_id,
+                provider="meta",
+                redirect_uri=get_settings().meta_redirect_uri,
+            )
+            await session.commit()
+        workspace_id = record.workspace_id
+        connections = await CompleteMetaOAuth(
+            SqlAlchemyUnitOfWork,
+            _meta_provider(),
+            _cipher(),
+        ).execute(actor, workspace_id, request.code)
+    except (ValueError, ConnectionAuthorizationError, OAuthStateError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PlatformConnectionListResponse(
+        items=[PlatformConnectionResponse.from_domain(connection) for connection in connections]
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/platform-connections",
+)
+async def list_platform_connections(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PlatformConnectionListResponse:
+    connections = await ListPlatformConnections(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return PlatformConnectionListResponse(
+        items=[PlatformConnectionResponse.from_domain(connection) for connection in connections]
+    )
+
+
+@router.get("/workspaces/{workspace_id}/social-accounts")
+async def list_social_accounts(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> SocialAccountListResponse:
+    accounts = await ListSocialAccounts(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return SocialAccountListResponse(
+        items=[SocialAccountResponse.from_domain(account) for account in accounts]
+    )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/campaigns",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_campaign(
+    workspace_id: UUID,
+    request: CreateCampaignRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> CampaignResponse:
+    campaign = await CreateCampaign(SqlAlchemyUnitOfWork).execute(
+        actor,
+        CreateCampaignCommand(
+            workspace_id=workspace_id,
+            brand_profile_id=request.brand_profile_id,
+            name=request.name,
+        ),
+    )
+    return CampaignResponse.from_domain(campaign)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/content-items",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_content_item(
+    workspace_id: UUID,
+    request: CreateContentItemRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> ContentItemResponse:
+    item = await CreateContentItem(SqlAlchemyUnitOfWork).execute(
+        actor,
+        CreateContentItemCommand(
+            workspace_id=workspace_id,
+            campaign_id=request.campaign_id,
+            body=request.body,
+        ),
+    )
+    return ContentItemResponse.from_domain(item)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/ai/adapt-for-platform",
+)
+async def adapt_for_platform(
+    workspace_id: UUID,
+    request: AdaptContentRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> AIGenerationResponse:
+    generation = await AdaptContentForPlatform(
+        SqlAlchemyUnitOfWork,
+        LocalAIContentService(),
+    ).execute(actor, workspace_id, request.text, request.platform)
+    return AIGenerationResponse.from_domain(generation)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/media-assets",
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_media_asset(
+    workspace_id: UUID,
+    request: RegisterMediaAssetRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> MediaAssetResponse:
+    asset = await RegisterMediaAsset(SqlAlchemyUnitOfWork).execute(
+        actor,
+        RegisterMediaAssetCommand(
+            workspace_id=workspace_id,
+            media_type=request.media_type,
+            storage_url=request.storage_url,
+            content_type=request.content_type,
+            checksum_sha256=request.checksum_sha256,
+        ),
+    )
+    return MediaAssetResponse.from_domain(asset)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/publications",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_publication(
+    workspace_id: UUID,
+    request: CreatePublicationRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationResponse:
+    try:
+        publication = await CreatePublication(SqlAlchemyUnitOfWork).execute(
+            actor,
+            CreatePublicationCommand(
+                workspace_id=workspace_id,
+                content_item_id=request.content_item_id,
+                platform_connection_id=request.platform_connection_id,
+                social_account_id=request.social_account_id,
+                platform=request.platform,
+                caption=request.caption,
+                media_asset_id=request.media_asset_id,
+            ),
+        )
+    except ApplicationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return PublicationResponse.from_domain(publication)
+
+
+@router.get("/workspaces/{workspace_id}/publications")
+async def list_publications(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationListResponse:
+    publications = await ListPublications(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return PublicationListResponse(
+        items=[PublicationResponse.from_domain(publication) for publication in publications]
+    )
+
+
+@router.post("/publications/{publication_id}/schedule")
+async def schedule_publication(
+    publication_id: UUID,
+    request: SchedulePublicationRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationResponse:
+    publication = await SchedulePublication(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
+        actor, publication_id, request.run_at
+    )
+    return PublicationResponse.from_domain(publication)
+
+
+@router.post("/publications/{publication_id}/publish-now")
+async def publish_now(
+    publication_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationResponse:
+    publication = await PublishPublicationNow(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
+        actor, publication_id
+    )
+    return PublicationResponse.from_domain(publication)

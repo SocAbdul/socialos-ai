@@ -449,6 +449,7 @@ class PublishQueuedPublication:
         execution_key = secrets.token_urlsafe(24)
         lease_expires_at = datetime.now(UTC) + timedelta(minutes=10)
         attempt_number = 0
+        provider_name = "unknown"
         async with self._uow_factory() as uow:
             publication = await uow.publications.get_for_update(publication_id)
             if publication is None:
@@ -482,6 +483,7 @@ class PublishQueuedPublication:
                 await uow.commit()
                 return publication
             provider = self._providers[connection.provider]
+            provider_name = provider.provider_name
             attempt_number = (
                 await uow.publication_attempts.count_for_publication(publication.id) + 1
             )
@@ -528,6 +530,7 @@ class PublishQueuedPublication:
                         publication.media_asset_id, publication.workspace_id
                     )
                 provider = self._providers[connection.provider]
+                provider_name = provider.provider_name
                 if media_asset is None:
                     result = await provider.publish_text(
                         connection,
@@ -579,8 +582,8 @@ class PublishQueuedPublication:
                     return None
                 if publication.execution_key != execution_key:
                     return publication
-                retryable = attempt_number < self._max_attempts
                 uncertain = _is_uncertain_error(exc)
+                retryable = attempt_number < self._max_attempts and _is_retryable_error(exc)
                 if uncertain:
                     publication.status = PublicationStatus.UNCERTAIN
                     publication.uncertain_since = datetime.now(UTC)
@@ -611,7 +614,8 @@ class PublishQueuedPublication:
                                 else AttemptStatus.FAILED_PERMANENT
                             )
                         ),
-                        provider="unknown",
+                        provider=provider_name,
+                        error_code=_error_code(exc),
                         error_message=str(exc),
                     )
                 )
@@ -650,3 +654,15 @@ def _is_uncertain_error(exc: Exception) -> bool:
     name = exc.__class__.__name__.lower()
     message = str(exc).lower()
     return "timeout" in name or "timeout" in message or "connection" in message
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    retryable = getattr(exc, "retryable", None)
+    if isinstance(retryable, bool):
+        return retryable
+    return True
+
+
+def _error_code(exc: Exception) -> str | None:
+    code = getattr(exc, "error_code", None)
+    return str(code) if code is not None else None
