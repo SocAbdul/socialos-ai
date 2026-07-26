@@ -50,6 +50,13 @@ allowing only ALB-originated inbound traffic. This is not the production network
 model; production must use private service subnets, TLS, WAF, private databases,
 restricted egress and reviewed network boundaries.
 
+Staging RDS PostgreSQL and Redis must be created in private isolated subnets.
+Only the ECS service security group should be allowed to connect. The staging
+PostgreSQL module generates `DATABASE_URL` in Secrets Manager; this keeps the
+runtime value out of GitHub logs, but the generated password remains sensitive
+Terraform state. Remote state must be encrypted and access-controlled before
+apply.
+
 ## Production readiness checks
 
 Before the first production deployment, verify:

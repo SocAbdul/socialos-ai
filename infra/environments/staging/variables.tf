@@ -49,6 +49,12 @@ variable "public_subnet_cidrs" {
   default     = ["10.40.1.0/24", "10.40.2.0/24"]
 }
 
+variable "private_subnet_cidrs" {
+  description = "Private isolated subnet CIDRs for staging data services."
+  type        = list(string)
+  default     = ["10.40.101.0/24", "10.40.102.0/24"]
+}
+
 variable "staging_api_image" {
   description = "Immutable API image reference to deploy to staging ECS."
   type        = string
@@ -93,4 +99,28 @@ variable "staging_secret_kms_key_arns" {
   description = "Optional KMS key ARNs required to decrypt staging runtime secrets."
   type        = set(string)
   default     = []
+}
+
+variable "staging_postgres_instance_class" {
+  description = "RDS PostgreSQL instance class for staging."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "staging_postgres_allocated_storage_gb" {
+  description = "RDS PostgreSQL allocated storage in GiB for staging."
+  type        = number
+  default     = 20
+}
+
+variable "staging_postgres_backup_retention_days" {
+  description = "RDS PostgreSQL automated backup retention in days for staging."
+  type        = number
+  default     = 7
+}
+
+variable "staging_redis_node_type" {
+  description = "ElastiCache Redis node type for staging."
+  type        = string
+  default     = "cache.t4g.micro"
 }

@@ -38,6 +38,10 @@ output "public_subnet_ids" {
   value = module.network.public_subnet_ids
 }
 
+output "private_subnet_ids" {
+  value = module.network.private_subnet_ids
+}
+
 output "staging_alb_dns_name" {
   value = module.runtime.alb_dns_name
 }
@@ -56,4 +60,16 @@ output "staging_web_service_name" {
 
 output "staging_task_role_arn" {
   value = module.runtime.task_role_arn
+}
+
+output "staging_postgres_endpoint" {
+  value = module.postgres.endpoint
+}
+
+output "staging_database_url_secret_arn" {
+  value = module.postgres.database_url_secret_arn
+}
+
+output "staging_redis_endpoint" {
+  value = module.redis.primary_endpoint_address
 }

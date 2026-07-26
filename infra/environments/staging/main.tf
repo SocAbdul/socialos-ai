@@ -13,9 +13,10 @@ module "media" {
 module "network" {
   source = "../../modules/network"
 
-  name_prefix         = "socialos-staging"
-  vpc_cidr            = var.vpc_cidr
-  public_subnet_cidrs = var.public_subnet_cidrs
+  name_prefix          = "socialos-staging"
+  vpc_cidr             = var.vpc_cidr
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  private_subnet_cidrs = var.private_subnet_cidrs
 
   tags = {
     LaunchStage = "private-beta"
@@ -55,6 +56,38 @@ module "github_oidc" {
   }
 }
 
+module "postgres" {
+  source = "../../modules/postgres"
+
+  name_prefix                = "socialos-staging"
+  vpc_id                     = module.network.vpc_id
+  subnet_ids                 = module.network.private_subnet_ids
+  allowed_security_group_ids = [module.runtime.service_security_group_id]
+  instance_class             = var.staging_postgres_instance_class
+  allocated_storage_gb       = var.staging_postgres_allocated_storage_gb
+  backup_retention_days      = var.staging_postgres_backup_retention_days
+  deletion_protection        = false
+  skip_final_snapshot        = true
+
+  tags = {
+    LaunchStage = "private-beta"
+  }
+}
+
+module "redis" {
+  source = "../../modules/redis"
+
+  name_prefix                = "socialos-staging"
+  vpc_id                     = module.network.vpc_id
+  subnet_ids                 = module.network.private_subnet_ids
+  allowed_security_group_ids = [module.runtime.service_security_group_id]
+  node_type                  = var.staging_redis_node_type
+
+  tags = {
+    LaunchStage = "private-beta"
+  }
+}
+
 module "runtime" {
   source = "../../modules/ecs_runtime"
 
@@ -72,13 +105,16 @@ module "runtime" {
     S3_MEDIA_BUCKET          = module.media.bucket_id
     S3_MEDIA_REGION          = var.aws_region
     S3_MEDIA_PUBLIC_BASE_URL = module.media.media_public_base_url
+    REDIS_URL                = module.redis.redis_url
   }, var.staging_api_environment)
 
   web_environment = merge({
     NEXT_PUBLIC_DEMO_MODE = "false"
   }, var.staging_web_environment)
 
-  api_secrets         = var.staging_api_secret_arns
+  api_secrets = merge({
+    DATABASE_URL = module.postgres.database_url_secret_arn
+  }, var.staging_api_secret_arns)
   web_secrets         = var.staging_web_secret_arns
   secret_kms_key_arns = var.staging_secret_kms_key_arns
   task_policy_arns = [
