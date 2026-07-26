@@ -83,9 +83,29 @@ const connectionListSchema = z.object({
   items: z.array(connectionSchema),
 });
 
+const mediaUploadTargetSchema = z.object({
+  object_key: z.string().min(1),
+  upload_url: z.string().url(),
+  public_url: z.string().url(),
+  method: z.literal("PUT"),
+  headers: z.record(z.string(), z.string()),
+  expires_at: z.string(),
+  max_size_bytes: z.number().int().positive(),
+});
+
+const mediaAssetSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  media_type: z.enum(["image", "video"]),
+  storage_url: z.string().url(),
+  content_type: z.string(),
+});
+
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type Publication = z.infer<typeof publicationSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
+export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
+export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 
 const API_URL =
   process.env.API_INTERNAL_URL ??
@@ -154,6 +174,54 @@ export async function listPlatformConnections(workspaceId: string): Promise<Plat
     return connectionListSchema.parse(await response.json()).items;
   } catch {
     return [];
+  }
+}
+
+export async function requestMediaUploadTarget(
+  workspaceId: string,
+  input: {
+    media_type: "image" | "video";
+    content_type: string;
+    checksum_sha256: string;
+    size_bytes: number;
+  },
+): Promise<MediaUploadTarget | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/media-assets/upload-target`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return mediaUploadTargetSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function registerMediaAsset(
+  workspaceId: string,
+  input: {
+    media_type: "image" | "video";
+    storage_url: string;
+    content_type: string;
+    checksum_sha256: string;
+  },
+): Promise<MediaAsset | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/media-assets`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return mediaAssetSchema.parse(await response.json());
+  } catch {
+    return null;
   }
 }
 

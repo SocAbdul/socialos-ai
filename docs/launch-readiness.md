@@ -12,6 +12,8 @@ traffic until every launch gate below is complete and verified in staging.
 - Clerk session verification, Organizations tenancy and role-based permissions.
 - Tenant-scoped post storage and provider-agnostic publishing ports.
 - CI checks, dependency auditing and Terraform foundations for media delivery.
+- Tenant-scoped media upload target contract for direct browser-to-storage
+  uploads, with S3 required outside local/test environments.
 
 ## Required launch gates
 
@@ -22,7 +24,8 @@ traffic until every launch gate below is complete and verified in staging.
 - **Social providers:** implement and review each OAuth connector independently,
   including token encryption, refresh, revocation, rate limits and webhooks.
 - **Infrastructure:** provision production VPC, RDS, ElastiCache, ECS, ALB,
-  CloudFront, S3, DNS, TLS, WAF and least-privilege IAM through Terraform.
+  CloudFront, S3, DNS, TLS, WAF and least-privilege IAM through Terraform;
+  then verify the direct media upload flow in staging.
 - **Reliability:** add structured error tracking, metrics, traces, dashboards,
   paging, dead-letter queues, retry policies and restore-tested backups.
 - **Security:** complete threat modeling, dependency and container scanning,

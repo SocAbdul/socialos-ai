@@ -30,6 +30,8 @@ from socialos.application.social.use_cases import (
     PublishPublicationNow,
     RegisterMediaAsset,
     RegisterMediaAssetCommand,
+    RequestMediaUpload,
+    RequestMediaUploadCommand,
     SchedulePublication,
 )
 from socialos.config import get_settings
@@ -51,6 +53,7 @@ from socialos.infrastructure.database.session import SqlAlchemyUnitOfWork, sessi
 from socialos.infrastructure.security.oauth_state import OAuthStateError, OAuthStateStore
 from socialos.infrastructure.security.token_cipher import FernetTokenCipher
 from socialos.infrastructure.social.meta import MetaSocialProvider
+from socialos.infrastructure.storage.media import build_media_storage
 from socialos.infrastructure.tasks.job_queue import CeleryJobQueue
 from socialos.presentation.api.dependencies import get_actor
 
@@ -242,6 +245,25 @@ class RegisterMediaAssetRequest(BaseModel):
     storage_url: str
     content_type: str
     checksum_sha256: str = Field(min_length=64, max_length=64)
+
+
+class RequestMediaUploadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    media_type: MediaType
+    content_type: str = Field(min_length=1, max_length=128)
+    checksum_sha256: str = Field(min_length=64, max_length=64)
+    size_bytes: int = Field(gt=0)
+
+
+class MediaUploadTargetResponse(BaseModel):
+    object_key: str
+    upload_url: str
+    public_url: str
+    method: str
+    headers: dict[str, str]
+    expires_at: datetime
+    max_size_bytes: int
 
 
 class MediaAssetResponse(BaseModel):
@@ -511,6 +533,43 @@ async def adapt_for_platform(
         LocalAIContentService(),
     ).execute(actor, workspace_id, request.text, request.platform)
     return AIGenerationResponse.from_domain(generation)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/media-assets/upload-target",
+)
+async def request_media_upload(
+    workspace_id: UUID,
+    request: RequestMediaUploadRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> MediaUploadTargetResponse:
+    try:
+        target = await RequestMediaUpload(
+            SqlAlchemyUnitOfWork,
+            build_media_storage(get_settings()),
+        ).execute(
+            actor,
+            RequestMediaUploadCommand(
+                workspace_id=workspace_id,
+                media_type=request.media_type,
+                content_type=request.content_type,
+                checksum_sha256=request.checksum_sha256,
+                size_bytes=request.size_bytes,
+            ),
+        )
+    except ApplicationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return MediaUploadTargetResponse(
+        object_key=target.object_key,
+        upload_url=target.upload_url,
+        public_url=target.public_url,
+        method=target.method,
+        headers=target.headers,
+        expires_at=target.expires_at,
+        max_size_bytes=target.max_size_bytes,
+    )
 
 
 @router.post(
