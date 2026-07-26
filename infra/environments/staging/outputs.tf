@@ -43,33 +43,33 @@ output "private_subnet_ids" {
 }
 
 output "staging_alb_dns_name" {
-  value = module.runtime.alb_dns_name
+  value = try(module.runtime[0].alb_dns_name, null)
 }
 
 output "staging_ecs_cluster_name" {
-  value = module.runtime.cluster_name
+  value = try(module.runtime[0].cluster_name, null)
 }
 
 output "staging_api_service_name" {
-  value = module.runtime.api_service_name
+  value = try(module.runtime[0].api_service_name, null)
 }
 
 output "staging_web_service_name" {
-  value = module.runtime.web_service_name
+  value = try(module.runtime[0].web_service_name, null)
 }
 
 output "staging_task_role_arn" {
-  value = module.runtime.task_role_arn
+  value = try(module.runtime[0].task_role_arn, null)
 }
 
 output "staging_postgres_endpoint" {
-  value = module.postgres.endpoint
+  value = try(module.postgres[0].endpoint, null)
 }
 
 output "staging_database_url_secret_arn" {
-  value = module.postgres.database_url_secret_arn
+  value = try(module.postgres[0].database_url_secret_arn, null)
 }
 
 output "staging_redis_endpoint" {
-  value = module.redis.primary_endpoint_address
+  value = try(module.redis[0].primary_endpoint_address, null)
 }

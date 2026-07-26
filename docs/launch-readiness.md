@@ -21,6 +21,8 @@ traffic until every launch gate below is complete and verified in staging.
 - Terraform foundation for a low-cost staging ECS Fargate runtime behind an
   Application Load Balancer.
 - Terraform foundation for private staging RDS PostgreSQL and ElastiCache Redis.
+- Terraform remote-state bootstrap and staging plan workflow inputs documented
+  for controlled AWS rollout.
 
 ## Required launch gates
 

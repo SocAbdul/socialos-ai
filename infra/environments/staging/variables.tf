@@ -58,17 +58,25 @@ variable "private_subnet_cidrs" {
 variable "staging_api_image" {
   description = "Immutable API image reference to deploy to staging ECS."
   type        = string
+  default     = "REPLACE_AFTER_STAGING_IMAGE_PUBLICATION"
 }
 
 variable "staging_web_image" {
   description = "Immutable web image reference to deploy to staging ECS."
   type        = string
+  default     = "REPLACE_AFTER_STAGING_IMAGE_PUBLICATION"
 }
 
 variable "staging_desired_count" {
   description = "Desired ECS task count per staging service."
   type        = number
   default     = 1
+}
+
+variable "enable_staging_runtime" {
+  description = "Enable RDS, Redis and ECS services after ECR images and required secrets exist."
+  type        = bool
+  default     = false
 }
 
 variable "staging_api_environment" {

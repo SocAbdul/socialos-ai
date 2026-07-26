@@ -15,6 +15,18 @@ resource "aws_security_group" "this" {
     }
   }
 
+  dynamic "ingress" {
+    for_each = var.allowed_cidr_blocks
+
+    content {
+      description = "Redis from approved CIDR"
+      from_port   = 6379
+      to_port     = 6379
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
   egress {
     description = "All outbound"
     from_port   = 0

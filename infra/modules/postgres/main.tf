@@ -21,6 +21,18 @@ resource "aws_security_group" "this" {
     }
   }
 
+  dynamic "ingress" {
+    for_each = var.allowed_cidr_blocks
+
+    content {
+      description = "PostgreSQL from approved CIDR"
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
   egress {
     description = "All outbound"
     from_port   = 0

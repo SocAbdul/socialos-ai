@@ -89,6 +89,11 @@ jobs:
           cd environments/staging
           terraform init -backend=false
           terraform validate
+      - name: Validate state bootstrap Terraform
+        run: |
+          cd bootstrap/state
+          terraform init -backend=false
+          terraform validate
 
   containers:
     runs-on: ubuntu-latest
