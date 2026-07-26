@@ -33,6 +33,33 @@ def test_rejects_unknown_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
         get_settings()
 
 
+def test_accepts_empty_optional_clerk_values_in_development(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "local")
+    monkeypatch.setenv("AUTH_MODE", "development")
+    monkeypatch.setenv("CLERK_JWKS_URL", "")
+    monkeypatch.setenv("CLERK_ISSUER", "")
+
+    settings = get_settings()
+
+    assert settings.auth_mode == "development"
+    assert settings.clerk_jwks_url is None
+    assert settings.clerk_issuer is None
+
+
+def test_rejects_empty_clerk_values_when_clerk_auth_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "local")
+    monkeypatch.setenv("AUTH_MODE", "clerk")
+    monkeypatch.setenv("CLERK_JWKS_URL", "")
+    monkeypatch.setenv("CLERK_ISSUER", "")
+
+    with pytest.raises(RuntimeError, match="Clerk authentication requires"):
+        get_settings()
+
+
 def test_rejects_development_authentication_in_staging(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

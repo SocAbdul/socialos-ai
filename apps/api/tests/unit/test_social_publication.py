@@ -162,6 +162,28 @@ async def test_meta_timeout_after_processing_marks_publication_uncertain() -> No
 
 
 @pytest.mark.asyncio
+async def test_non_retryable_provider_error_marks_publication_permanent() -> None:
+    connection, account, publication = make_ready_facebook_publication()
+    uow = InMemoryUow(publication=publication, connection=connection, account=account)
+    provider = PermanentFailureProvider()
+
+    result = await PublishQueuedPublication(
+        lambda: cast(SocialUnitOfWork, uow),
+        {"meta": cast(SocialProvider, provider)},
+    ).execute(publication.id)
+
+    assert result is not None
+    assert result.status == PublicationStatus.FAILED_PERMANENT
+    assert result.next_attempt_at is None
+    assert [attempt.status for attempt in uow.attempts] == [
+        AttemptStatus.STARTED,
+        AttemptStatus.FAILED_PERMANENT,
+    ]
+    assert uow.attempts[-1].provider == "meta"
+    assert uow.attempts[-1].error_code == "190"
+
+
+@pytest.mark.asyncio
 async def test_two_workers_receiving_same_job_do_not_duplicate_after_success() -> None:
     connection, account, publication = make_ready_facebook_publication()
     uow = InMemoryUow(publication=publication, connection=connection, account=account)
@@ -378,6 +400,17 @@ class TimeoutProvider(FakeProvider):
     async def publish_text(self, *args: object, **kwargs: object) -> object:
         self.publish_calls += 1
         raise TimeoutError("Meta timeout after processing request")
+
+
+class PermanentProviderError(RuntimeError):
+    retryable = False
+    error_code = "190"
+
+
+class PermanentFailureProvider(FakeProvider):
+    async def publish_text(self, *args: object, **kwargs: object) -> object:
+        self.publish_calls += 1
+        raise PermanentProviderError("Invalid OAuth access token")
 
 
 class FakeResult:
