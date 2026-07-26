@@ -12,5 +12,4 @@ variable "media_bucket_name" {
 variable "media_cors_allowed_origins" {
   description = "Frontend origins allowed to upload media directly."
   type        = list(string)
-  default     = ["http://localhost:3000"]
 }

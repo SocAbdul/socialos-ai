@@ -68,9 +68,31 @@ jobs:
       - run: npx playwright install chromium
       - run: npm run test:e2e
 
+  infra:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - run: terraform fmt -check -recursive
+      - name: Validate dev Terraform
+        run: |
+          cd environments/dev
+          terraform init -backend=false
+          terraform validate
+      - name: Validate staging Terraform
+        run: |
+          cd environments/staging
+          terraform init -backend=false
+          terraform validate
+
   containers:
     runs-on: ubuntu-latest
-    needs: [api, web]
+    needs: [api, web, infra]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
