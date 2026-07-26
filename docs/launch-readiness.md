@@ -18,6 +18,8 @@ traffic until every launch gate below is complete and verified in staging.
   repositories and GitHub OIDC deployment identity.
 - Manual, OIDC-based staging image publication workflow with immutable
   commit-SHA tags and successful-CI verification.
+- Terraform foundation for a low-cost staging ECS Fargate runtime behind an
+  Application Load Balancer.
 
 ## Required launch gates
 

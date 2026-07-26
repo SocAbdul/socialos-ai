@@ -42,6 +42,9 @@ GitHub OIDC, and publishes immutable API/web images to ECR using the commit SHA
 as the tag. It is idempotent: if an image tag already exists in ECR, the workflow
 reuses it instead of trying to overwrite an immutable tag.
 
+After staging infrastructure exists, deploy only the exact image refs emitted by
+the image publication workflow. Do not promote `latest` or locally built images.
+
 ## Recommended Repository Settings
 
 - Require pull requests before merging to `main`.

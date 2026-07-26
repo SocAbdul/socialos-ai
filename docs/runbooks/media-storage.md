@@ -26,13 +26,15 @@ MEDIA_MAX_UPLOAD_BYTES=15728640
 S3_MEDIA_BUCKET=socialos-ai-media-...
 S3_MEDIA_REGION=...
 S3_MEDIA_PUBLIC_BASE_URL=https://media.socialos.ai
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_SESSION_TOKEN=
 ```
 
 `S3_MEDIA_PUBLIC_BASE_URL` should point at CloudFront, not directly at a private
 S3 bucket. The CloudFront origin must be allowed to read the media objects.
+
+In ECS, the API must sign S3 upload URLs through its task role. Do not configure
+static `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` in staging or production.
+Local development may still use the standard AWS credential chain when testing
+S3 manually.
 
 Terraform for the staging media foundation lives in
 `infra/environments/staging`. It creates:

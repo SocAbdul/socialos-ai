@@ -44,6 +44,12 @@ commit-SHA image tags after verifying that the exact revision has a successful
 completed CI run. It must use GitHub OIDC and must not use static AWS access
 keys.
 
+The staging ECS runtime is optimized for private-beta cost control. It may run
+Fargate services in public subnets behind an ALB with service security groups
+allowing only ALB-originated inbound traffic. This is not the production network
+model; production must use private service subnets, TLS, WAF, private databases,
+restricted egress and reviewed network boundaries.
+
 ## Production readiness checks
 
 Before the first production deployment, verify:

@@ -36,3 +36,61 @@ variable "existing_github_oidc_provider_arn" {
   type        = string
   default     = null
 }
+
+variable "vpc_cidr" {
+  description = "CIDR block for the staging VPC."
+  type        = string
+  default     = "10.40.0.0/16"
+}
+
+variable "public_subnet_cidrs" {
+  description = "Public subnet CIDRs for the low-cost staging runtime."
+  type        = list(string)
+  default     = ["10.40.1.0/24", "10.40.2.0/24"]
+}
+
+variable "staging_api_image" {
+  description = "Immutable API image reference to deploy to staging ECS."
+  type        = string
+}
+
+variable "staging_web_image" {
+  description = "Immutable web image reference to deploy to staging ECS."
+  type        = string
+}
+
+variable "staging_desired_count" {
+  description = "Desired ECS task count per staging service."
+  type        = number
+  default     = 1
+}
+
+variable "staging_api_environment" {
+  description = "Additional non-secret API environment variables."
+  type        = map(string)
+  default     = {}
+}
+
+variable "staging_web_environment" {
+  description = "Additional non-secret web environment variables."
+  type        = map(string)
+  default     = {}
+}
+
+variable "staging_api_secret_arns" {
+  description = "API secret environment variables mapped to SSM or Secrets Manager ARNs."
+  type        = map(string)
+  default     = {}
+}
+
+variable "staging_web_secret_arns" {
+  description = "Web secret environment variables mapped to SSM or Secrets Manager ARNs."
+  type        = map(string)
+  default     = {}
+}
+
+variable "staging_secret_kms_key_arns" {
+  description = "Optional KMS key ARNs required to decrypt staging runtime secrets."
+  type        = set(string)
+  default     = []
+}

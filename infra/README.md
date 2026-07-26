@@ -23,10 +23,17 @@ The staging composition also prepares:
 - immutable ECR repositories for API and web images;
 - GitHub Actions OIDC deployment role for pushing verified images without
   long-lived AWS access keys.
+- low-cost ECS Fargate runtime behind an Application Load Balancer for staging
+  smoke tests.
 
 If the AWS account already has a GitHub Actions OIDC provider, set
 `existing_github_oidc_provider_arn` in the staging tfvars instead of creating a
 duplicate provider.
+
+The staging runtime intentionally uses public subnets with tightly scoped
+security groups to avoid NAT Gateway cost during private beta. This is acceptable
+only for staging validation. Production must use private service subnets, TLS,
+WAF, managed databases and a reviewed network topology before public traffic.
 
 ## Staging media foundation
 
@@ -99,3 +106,26 @@ Use these Terraform outputs after staging bootstrap:
 
 Images are tagged with the full commit SHA. Do not use mutable tags such as
 `latest` for staging or production promotion.
+
+## Staging runtime
+
+The staging environment now composes:
+
+- VPC with two public subnets;
+- internet-facing Application Load Balancer;
+- ECS Fargate cluster;
+- API and web services;
+- CloudWatch log groups;
+- ECS task execution and task roles;
+- media signing IAM policy attached to the API/web task role;
+- runtime secrets injected by ARN from SSM Parameter Store or Secrets Manager.
+
+Before applying the staging runtime, publish immutable images with
+`publish-staging-images.yml` and set:
+
+- `staging_api_image`
+- `staging_web_image`
+- `staging_api_secret_arns`
+- `staging_web_secret_arns`
+
+Do not store secret values in Terraform variables or GitHub workflow logs.
