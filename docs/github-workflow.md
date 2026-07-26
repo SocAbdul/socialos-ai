@@ -35,6 +35,13 @@ Pull Request approved
 GitHub `staging` environment variables documented in `infra/README.md` and does
 not run `terraform apply`.
 
+`publish-staging-images.yml` is a manual staging-only image publication
+workflow. It resolves the selected Git ref to an exact commit SHA, requires a
+successful completed CI run for that SHA, assumes the staging AWS role through
+GitHub OIDC, and publishes immutable API/web images to ECR using the commit SHA
+as the tag. It is idempotent: if an image tag already exists in ECR, the workflow
+reuses it instead of trying to overwrite an immutable tag.
+
 ## Recommended Repository Settings
 
 - Require pull requests before merging to `main`.
@@ -47,6 +54,8 @@ not run `terraform apply`.
   - `production` with required reviewers.
 - Configure staging environment variables for Terraform planning before running
   the manual plan workflow.
+- Configure staging image publication variables before running the manual image
+  publication workflow.
 - Enable Dependabot alerts and security updates.
 - Use labels:
   - `bug`

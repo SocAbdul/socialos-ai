@@ -77,3 +77,25 @@ variables:
 
 The first Terraform bootstrap may still need to be run by an AWS administrator
 because the OIDC roles do not exist before Terraform is applied.
+
+## GitHub Actions staging image publication
+
+`.github/workflows/publish-staging-images.yml` is manual-only. It publishes
+immutable Docker images to the staging ECR repositories after verifying that the
+selected commit SHA has a successful completed CI run.
+
+Configure these GitHub `staging` environment variables before running it:
+
+- `AWS_REGION`
+- `AWS_STAGING_DEPLOY_ROLE_ARN`
+- `STAGING_API_ECR_REPOSITORY_URL`
+- `STAGING_WEB_ECR_REPOSITORY_URL`
+
+Use these Terraform outputs after staging bootstrap:
+
+- `github_actions_deploy_role_arn` -> `AWS_STAGING_DEPLOY_ROLE_ARN`
+- `ecr_repository_urls["api"]` -> `STAGING_API_ECR_REPOSITORY_URL`
+- `ecr_repository_urls["web"]` -> `STAGING_WEB_ECR_REPOSITORY_URL`
+
+Images are tagged with the full commit SHA. Do not use mutable tags such as
+`latest` for staging or production promotion.

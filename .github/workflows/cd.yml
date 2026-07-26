@@ -36,8 +36,8 @@ jobs:
       - name: Record verified revision
         id: revision
         run: echo "image_tag=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
-      - run: docker build --target production -t socialos-api:${DEPLOY_SHA} apps/api
-      - run: docker build --target production -t socialos-web:${DEPLOY_SHA} apps/web
+      - run: docker build --target production -t "socialos-api:${DEPLOY_SHA}" apps/api
+      - run: docker build --target production -t "socialos-web:${DEPLOY_SHA}" apps/web
 
   deploy-staging:
     needs: build-images
