@@ -17,6 +17,17 @@ ECS, RDS, ElastiCache, networking, WAF, observability, and deployment roles will
 be added as independent modules after the AWS account and environment topology
 are confirmed.
 
+The staging composition also prepares:
+
+- monthly AWS Budget alerts;
+- immutable ECR repositories for API and web images;
+- GitHub Actions OIDC deployment role for pushing verified images without
+  long-lived AWS access keys.
+
+If the AWS account already has a GitHub Actions OIDC provider, set
+`existing_github_oidc_provider_arn` in the staging tfvars instead of creating a
+duplicate provider.
+
 ## Staging media foundation
 
 Create a local tfvars file from the example:
@@ -50,3 +61,19 @@ S3_MEDIA_PUBLIC_BASE_URL=<media_public_base_url>
 
 Attach `media_signer_policy_arn` to the API runtime identity. Prefer an ECS task
 role or GitHub OIDC-assumed role over static access keys.
+
+## GitHub Actions Terraform plan
+
+`.github/workflows/terraform-plan.yml` is manual-only. It does not apply
+infrastructure. Before it can run, configure the GitHub `staging` environment
+variables:
+
+- `AWS_TERRAFORM_PLAN_ROLE_ARN`
+- `AWS_REGION`
+- `S3_MEDIA_BUCKET`
+- `STAGING_WEB_ORIGIN`
+- `MONTHLY_BUDGET_LIMIT_USD`
+- `BUDGET_ALERT_EMAIL`
+
+The first Terraform bootstrap may still need to be run by an AWS administrator
+because the OIDC roles do not exist before Terraform is applied.
