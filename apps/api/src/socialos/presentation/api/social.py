@@ -64,6 +64,7 @@ def _cipher() -> FernetTokenCipher:
 def _meta_provider() -> MetaSocialProvider:
     return MetaSocialProvider(get_settings(), _cipher())
 
+
 class CreateWorkspaceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
