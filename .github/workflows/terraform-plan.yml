@@ -1,0 +1,79 @@
+name: Terraform Plan
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Terraform environment to plan
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-plan-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+    env:
+      TF_ENVIRONMENT: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Check required environment variables
+        env:
+          AWS_TERRAFORM_PLAN_ROLE_ARN: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          S3_MEDIA_BUCKET: ${{ vars.S3_MEDIA_BUCKET }}
+          STAGING_WEB_ORIGIN: ${{ vars.STAGING_WEB_ORIGIN }}
+          MONTHLY_BUDGET_LIMIT_USD: ${{ vars.MONTHLY_BUDGET_LIMIT_USD }}
+          BUDGET_ALERT_EMAIL: ${{ vars.BUDGET_ALERT_EMAIL }}
+        run: |
+          missing=0
+          for variable in AWS_TERRAFORM_PLAN_ROLE_ARN AWS_REGION S3_MEDIA_BUCKET STAGING_WEB_ORIGIN MONTHLY_BUDGET_LIMIT_USD BUDGET_ALERT_EMAIL; do
+            if [ -z "${!variable}" ]; then
+              echo "::error::Missing GitHub environment variable: ${variable}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Write tfvars
+        run: |
+          cd "infra/environments/${TF_ENVIRONMENT}"
+          cat > github.auto.tfvars <<'EOF'
+          aws_region = "${{ vars.AWS_REGION }}"
+          media_bucket_name = "${{ vars.S3_MEDIA_BUCKET }}"
+          media_cors_allowed_origins = ["${{ vars.STAGING_WEB_ORIGIN }}"]
+          monthly_budget_limit_usd = ${{ vars.MONTHLY_BUDGET_LIMIT_USD }}
+          budget_alert_email = "${{ vars.BUDGET_ALERT_EMAIL }}"
+          github_repository = "${{ github.repository }}"
+          EOF
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra
+      - name: Initialize Terraform
+        run: |
+          cd "infra/environments/${TF_ENVIRONMENT}"
+          terraform init -backend=false
+      - name: Validate Terraform
+        run: |
+          cd "infra/environments/${TF_ENVIRONMENT}"
+          terraform validate
+      - name: Plan Terraform
+        run: |
+          cd "infra/environments/${TF_ENVIRONMENT}"
+          terraform plan -input=false -out=tfplan

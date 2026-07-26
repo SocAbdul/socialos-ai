@@ -12,6 +12,7 @@ Every pull request runs:
 
 - Backend lint, format check, typecheck, migrations and tests.
 - Frontend lint, typecheck, unit tests, build and Playwright demo flow.
+- Terraform format and validation for infrastructure environments.
 - Production Docker image builds.
 
 ## CD
@@ -30,6 +31,10 @@ Pull Request approved
 
 `cd.yml` currently contains deployment contracts. Real AWS deployment should be enabled after ECR, ECS service names, Terraform state and GitHub OIDC roles are configured.
 
+`terraform-plan.yml` is a manual staging-only planning workflow. It requires the
+GitHub `staging` environment variables documented in `infra/README.md` and does
+not run `terraform apply`.
+
 ## Recommended Repository Settings
 
 - Require pull requests before merging to `main`.
@@ -40,6 +45,8 @@ Pull Request approved
 - Create GitHub Environments:
   - `staging`
   - `production` with required reviewers.
+- Configure staging environment variables for Terraform planning before running
+  the manual plan workflow.
 - Enable Dependabot alerts and security updates.
 - Use labels:
   - `bug`

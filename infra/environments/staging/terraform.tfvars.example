@@ -6,3 +6,11 @@ media_bucket_name = "socialos-ai-staging-media-REPLACE"
 media_cors_allowed_origins = [
   "https://staging.socialos.ai",
 ]
+
+monthly_budget_limit_usd = 25
+budget_alert_email       = "founder@example.com"
+github_repository        = "SocAbdul/socialos-ai"
+
+# If the AWS account already has a GitHub Actions OIDC provider, set its ARN here.
+# Leave null in a fresh account.
+existing_github_oidc_provider_arn = null

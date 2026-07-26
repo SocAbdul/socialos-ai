@@ -14,6 +14,8 @@ traffic until every launch gate below is complete and verified in staging.
 - CI checks, dependency auditing and Terraform foundations for media delivery.
 - Tenant-scoped media upload target contract for direct browser-to-storage
   uploads, with S3 required outside local/test environments.
+- Terraform foundations for staging media delivery, budget alerts, ECR image
+  repositories and GitHub OIDC deployment identity.
 
 ## Required launch gates
 
