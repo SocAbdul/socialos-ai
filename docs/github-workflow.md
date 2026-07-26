@@ -51,6 +51,10 @@ Next.js public environment values can be compiled into client bundles.
 After staging infrastructure exists, deploy only the exact image refs emitted by
 the image publication workflow. Do not promote `latest` or locally built images.
 
+`staging-migrations.yml` and `staging-smoke.yml` are manual staging operations.
+Use them after the runtime exists to run Alembic as a one-off ECS task and verify
+the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
+
 ## Recommended Repository Settings
 
 - Require pull requests before merging to `main`.
@@ -65,6 +69,8 @@ the image publication workflow. Do not promote `latest` or locally built images.
   the manual plan workflow.
 - Configure staging image publication variables before running the manual image
   publication workflow.
+- Configure staging operations variables before running staging migrations or
+  smoke checks.
 - Enable Dependabot alerts and security updates.
 - Use labels:
   - `bug`

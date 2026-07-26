@@ -58,8 +58,20 @@ output "staging_web_service_name" {
   value = try(module.runtime[0].web_service_name, null)
 }
 
+output "staging_api_task_definition_arn" {
+  value = try(module.runtime[0].api_task_definition_arn, null)
+}
+
+output "staging_web_task_definition_arn" {
+  value = try(module.runtime[0].web_task_definition_arn, null)
+}
+
 output "staging_task_role_arn" {
   value = try(module.runtime[0].task_role_arn, null)
+}
+
+output "staging_service_security_group_id" {
+  value = try(module.runtime[0].service_security_group_id, null)
 }
 
 output "staging_postgres_endpoint" {

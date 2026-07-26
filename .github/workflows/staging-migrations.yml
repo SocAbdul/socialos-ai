@@ -1,0 +1,98 @@
+name: Staging Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type run-staging-migrations to execute Alembic against staging.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_STAGING_DEPLOY_ROLE_ARN: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+      STAGING_ECS_CLUSTER_NAME: ${{ vars.STAGING_ECS_CLUSTER_NAME }}
+      STAGING_API_TASK_DEFINITION_ARN: ${{ vars.STAGING_API_TASK_DEFINITION_ARN }}
+      STAGING_PUBLIC_SUBNET_IDS_JSON: ${{ vars.STAGING_PUBLIC_SUBNET_IDS_JSON }}
+      STAGING_SERVICE_SECURITY_GROUP_ID: ${{ vars.STAGING_SERVICE_SECURITY_GROUP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check manual confirmation
+        run: |
+          if [ "${{ inputs.confirmation }}" != "run-staging-migrations" ]; then
+            echo "::error::Confirmation must be exactly: run-staging-migrations"
+            exit 1
+          fi
+      - name: Check required environment variables
+        run: |
+          missing=0
+          for variable in AWS_REGION AWS_STAGING_DEPLOY_ROLE_ARN STAGING_ECS_CLUSTER_NAME STAGING_API_TASK_DEFINITION_ARN STAGING_PUBLIC_SUBNET_IDS_JSON STAGING_SERVICE_SECURITY_GROUP_ID; do
+            if [ -z "${!variable}" ]; then
+              echo "::error::Missing GitHub environment variable: ${variable}"
+              missing=1
+            fi
+          done
+          if ! jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' >/dev/null <<<"${STAGING_PUBLIC_SUBNET_IDS_JSON}"; then
+            echo "::error::STAGING_PUBLIC_SUBNET_IDS_JSON must be a JSON array of subnet IDs."
+            missing=1
+          fi
+          exit "${missing}"
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Run Alembic migrations as a one-off ECS task
+        run: |
+          network_configuration="$(jq -cn \
+            --argjson subnets "${STAGING_PUBLIC_SUBNET_IDS_JSON}" \
+            --arg security_group "${STAGING_SERVICE_SECURITY_GROUP_ID}" \
+            '{awsvpcConfiguration:{subnets:$subnets,securityGroups:[$security_group],assignPublicIp:"ENABLED"}}')"
+          overrides="$(jq -cn '{containerOverrides:[{name:"api",command:["alembic","upgrade","head"]}]}')"
+
+          response="$(aws ecs run-task \
+            --cluster "${STAGING_ECS_CLUSTER_NAME}" \
+            --launch-type FARGATE \
+            --task-definition "${STAGING_API_TASK_DEFINITION_ARN}" \
+            --network-configuration "${network_configuration}" \
+            --overrides "${overrides}")"
+
+          if [ "$(jq '.failures | length' <<<"${response}")" -ne 0 ]; then
+            echo "::error::ECS refused to start the migration task."
+            jq '.failures' <<<"${response}"
+            exit 1
+          fi
+
+          task_arn="$(jq -r '.tasks[0].taskArn' <<<"${response}")"
+          if [ -z "${task_arn}" ] || [ "${task_arn}" = "null" ]; then
+            echo "::error::ECS did not return a migration task ARN."
+            jq '.' <<<"${response}"
+            exit 1
+          fi
+
+          echo "Migration task: ${task_arn}"
+          aws ecs wait tasks-stopped --cluster "${STAGING_ECS_CLUSTER_NAME}" --tasks "${task_arn}"
+
+          task="$(aws ecs describe-tasks --cluster "${STAGING_ECS_CLUSTER_NAME}" --tasks "${task_arn}")"
+          exit_code="$(jq -r '.tasks[0].containers[] | select(.name == "api") | .exitCode // empty' <<<"${task}")"
+          stopped_reason="$(jq -r '.tasks[0].stoppedReason // ""' <<<"${task}")"
+
+          if [ "${exit_code}" != "0" ]; then
+            echo "::error::Migration task failed with exit code ${exit_code:-unknown}. ${stopped_reason}"
+            jq '.tasks[0].containers[] | select(.name == "api")' <<<"${task}"
+            exit 1
+          fi
+
+          echo "Alembic migrations completed successfully."

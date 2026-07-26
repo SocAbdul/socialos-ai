@@ -18,6 +18,14 @@ output "web_service_name" {
   value = aws_ecs_service.web.name
 }
 
+output "api_task_definition_arn" {
+  value = aws_ecs_task_definition.api.arn
+}
+
+output "web_task_definition_arn" {
+  value = aws_ecs_task_definition.web.arn
+}
+
 output "task_execution_role_arn" {
   value = aws_iam_role.task_execution.arn
 }
