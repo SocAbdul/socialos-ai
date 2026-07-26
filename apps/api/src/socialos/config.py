@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
 AuthMode = Literal["development", "clerk"]
+MediaStorageProvider = Literal["local", "s3"]
 
 _MIN_TOKEN_ENCRYPTION_KEY_LENGTH = 32
 _INSECURE_TOKEN_ENCRYPTION_KEYS = frozenset(
@@ -41,6 +42,15 @@ class Settings(BaseSettings):
     meta_graph_api_version: str = "v25.0"
     ai_provider: str = "local"
     ai_model: str = "socialos-local-v1"
+    media_storage_provider: MediaStorageProvider = "local"
+    media_upload_url_ttl_seconds: int = 900
+    media_max_upload_bytes: int = 15 * 1024 * 1024
+    s3_media_bucket: str | None = None
+    s3_media_region: str | None = None
+    s3_media_public_base_url: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_session_token: str | None = None
 
     @field_validator(
         "clerk_jwks_url",
@@ -49,6 +59,12 @@ class Settings(BaseSettings):
         "token_encryption_key",
         "meta_app_id",
         "meta_app_secret",
+        "s3_media_bucket",
+        "s3_media_region",
+        "s3_media_public_base_url",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
         mode="before",
     )
     @classmethod
@@ -85,6 +101,20 @@ def _validate_runtime_security(settings: Settings) -> None:
             "TOKEN_ENCRYPTION_KEY must contain at least "
             f"{_MIN_TOKEN_ENCRYPTION_KEY_LENGTH} characters"
         )
+
+    if settings.media_storage_provider != "s3":
+        raise RuntimeError("S3 media storage is required outside local/test")
+
+    required_s3_settings = {
+        "S3_MEDIA_BUCKET": settings.s3_media_bucket,
+        "S3_MEDIA_REGION": settings.s3_media_region,
+        "S3_MEDIA_PUBLIC_BASE_URL": settings.s3_media_public_base_url,
+        "AWS_ACCESS_KEY_ID": settings.aws_access_key_id,
+        "AWS_SECRET_ACCESS_KEY": settings.aws_secret_access_key,
+    }
+    missing = [name for name, value in required_s3_settings.items() if not value]
+    if missing:
+        raise RuntimeError(f"Missing required S3 media settings: {', '.join(missing)}")
 
 
 @lru_cache

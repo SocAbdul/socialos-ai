@@ -10,6 +10,9 @@ from socialos.application.common.auth import Actor, Permission
 from socialos.application.social.ports import (
     AIContentService,
     JobQueue,
+    MediaStorageService,
+    MediaUploadRequest,
+    MediaUploadTarget,
     SocialProvider,
     SocialUnitOfWork,
     TokenCipher,
@@ -281,6 +284,41 @@ class RegisterMediaAsset:
             await uow.media_assets.add(asset)
             await uow.commit()
             return asset
+
+
+@dataclass(frozen=True, slots=True)
+class RequestMediaUploadCommand:
+    workspace_id: UUID
+    media_type: MediaType
+    content_type: str
+    checksum_sha256: str
+    size_bytes: int
+
+
+class RequestMediaUpload:
+    def __init__(
+        self,
+        uow_factory: Callable[[], SocialUnitOfWork],
+        storage: MediaStorageService,
+    ) -> None:
+        self._uow_factory = uow_factory
+        self._storage = storage
+
+    async def execute(self, actor: Actor, command: RequestMediaUploadCommand) -> MediaUploadTarget:
+        actor.require(Permission.POSTS_WRITE)
+        _validate_media_upload(command)
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, command.workspace_id)
+        return self._storage.create_upload_target(
+            MediaUploadRequest(
+                workspace_id=command.workspace_id,
+                uploader_id=actor.user_id,
+                media_type=command.media_type.value,
+                content_type=command.content_type,
+                checksum_sha256=command.checksum_sha256,
+                size_bytes=command.size_bytes,
+            )
+        )
 
 
 class AdaptContentForPlatform:
@@ -648,6 +686,27 @@ def _validate_publication_capabilities(
         raise ValueError("Selected social account does not support text-only publishing")
     if media_asset_id is not None and not bool(account.capabilities.get("supports_single_image")):
         raise ValueError("Selected social account does not support single-image publishing")
+
+
+def _validate_media_upload(command: RequestMediaUploadCommand) -> None:
+    allowed_content_types = {
+        MediaType.IMAGE: {"image/jpeg", "image/png"},
+        MediaType.VIDEO: {"video/mp4"},
+    }
+    if command.content_type not in allowed_content_types[command.media_type]:
+        raise ValueError("Unsupported media content type")
+    if command.size_bytes <= 0:
+        raise ValueError("Media upload size must be positive")
+    if command.media_type == MediaType.IMAGE and command.size_bytes > 15 * 1024 * 1024:
+        raise ValueError("Image upload exceeds the 15 MB limit")
+    if command.media_type == MediaType.VIDEO and command.size_bytes > 100 * 1024 * 1024:
+        raise ValueError("Video upload exceeds the 100 MB limit")
+    if len(command.checksum_sha256) != 64:
+        raise ValueError("Media checksum must be a SHA-256 hex digest")
+    try:
+        int(command.checksum_sha256, 16)
+    except ValueError as exc:
+        raise ValueError("Media checksum must be a SHA-256 hex digest") from exc
 
 
 def _is_uncertain_error(exc: Exception) -> bool:

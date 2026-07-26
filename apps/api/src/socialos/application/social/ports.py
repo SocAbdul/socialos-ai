@@ -74,6 +74,27 @@ class PublishResult:
     provider_request_id: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class MediaUploadRequest:
+    workspace_id: UUID
+    uploader_id: str
+    media_type: str
+    content_type: str
+    checksum_sha256: str
+    size_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class MediaUploadTarget:
+    object_key: str
+    upload_url: str
+    public_url: str
+    method: str
+    headers: dict[str, str]
+    expires_at: datetime
+    max_size_bytes: int
+
+
 class WorkspaceRepository(Protocol):
     async def add(self, workspace: Workspace) -> Workspace: ...
 
@@ -242,6 +263,10 @@ class JobQueue(Protocol):
     async def enqueue_publication(
         self, publication_id: UUID, run_at: datetime | None = None
     ) -> None: ...
+
+
+class MediaStorageService(Protocol):
+    def create_upload_target(self, request: MediaUploadRequest) -> MediaUploadTarget: ...
 
 
 class AIContentService(Protocol):

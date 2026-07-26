@@ -151,4 +151,6 @@ cd C:\dev\socialos-ai
 
 `AUTH_MODE=development` accepts local development headers only in local/test environments. `AUTH_MODE=clerk` verifies Clerk JWTs.
 
-Never paste `META_APP_SECRET`, authorization codes, access tokens or signed media URLs into chat or logs.
+`MEDIA_STORAGE_PROVIDER=local` is for local development. Staging and production require `MEDIA_STORAGE_PROVIDER=s3`, S3 bucket settings, CloudFront public base URL and AWS credentials injected through the deployment environment. See `docs/runbooks/media-storage.md`.
+
+Never paste `META_APP_SECRET`, authorization codes, access tokens, AWS secrets or signed media URLs into chat or logs.

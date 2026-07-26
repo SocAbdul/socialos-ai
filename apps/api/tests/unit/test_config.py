@@ -18,12 +18,20 @@ def configure_clerk_environment(
     *,
     environment: str = "production",
     encryption_key: str,
+    configure_s3: bool = True,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", environment)
     monkeypatch.setenv("AUTH_MODE", "clerk")
     monkeypatch.setenv("CLERK_JWKS_URL", "https://clerk.example.test/.well-known/jwks.json")
     monkeypatch.setenv("CLERK_ISSUER", "https://clerk.example.test")
     monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", encryption_key)
+    if configure_s3:
+        monkeypatch.setenv("MEDIA_STORAGE_PROVIDER", "s3")
+        monkeypatch.setenv("S3_MEDIA_BUCKET", "socialos-media-test")
+        monkeypatch.setenv("S3_MEDIA_REGION", "eu-west-2")
+        monkeypatch.setenv("S3_MEDIA_PUBLIC_BASE_URL", "https://media.example.test")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIATEST")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret-test-value")
 
 
 def test_rejects_unknown_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,6 +98,17 @@ def test_rejects_short_encryption_key(monkeypatch: pytest.MonkeyPatch) -> None:
         get_settings()
 
 
+def test_requires_s3_media_storage_outside_local_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_clerk_environment(
+        monkeypatch,
+        encryption_key="x" * 48,
+        configure_s3=False,
+    )
+
+    with pytest.raises(RuntimeError, match="S3 media storage"):
+        get_settings()
+
+
 def test_accepts_strong_production_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
 
@@ -97,3 +116,4 @@ def test_accepts_strong_production_configuration(monkeypatch: pytest.MonkeyPatch
 
     assert settings.environment == "production"
     assert settings.auth_mode == "clerk"
+    assert settings.media_storage_provider == "s3"

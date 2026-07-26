@@ -23,9 +23,15 @@ META_APP_ID=...
 META_APP_SECRET=...
 META_REDIRECT_URI=http://localhost:8000/api/v1/platform-connections/meta/callback
 META_GRAPH_API_VERSION=v25.0
+MEDIA_STORAGE_PROVIDER=s3
+S3_MEDIA_BUCKET=...
+S3_MEDIA_REGION=...
+S3_MEDIA_PUBLIC_BASE_URL=https://media.example.com
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
 ```
 
-Never log or paste `META_APP_SECRET`, authorization codes, access tokens, or signed media URLs.
+Never log or paste `META_APP_SECRET`, authorization codes, access tokens, AWS secrets, or signed media upload URLs.
 
 ## 3. Permissions
 
@@ -82,15 +88,17 @@ npm run build
 
 1. Create a campaign.
 2. Create a content item.
-3. Register a public media URL if publishing an image.
-4. Create a publication against the Facebook Page `SocialAccount`.
-5. Publish now.
-6. Confirm dashboard status becomes `published`.
-7. Open `external_url` and verify the post exists on Facebook.
+3. Request a media upload target from `POST /api/v1/workspaces/{workspace_id}/media-assets/upload-target`.
+4. Upload the binary directly to the returned `upload_url` using the returned method and headers.
+5. Register the media asset with `storage_url` set to the returned `public_url`.
+6. Create a publication against the Facebook Page `SocialAccount`.
+7. Publish now.
+8. Confirm dashboard status becomes `published`.
+9. Open `external_url` and verify the post exists on Facebook.
 
 ## 7. Publish To Instagram
 
-1. Use a publicly reachable HTTPS image URL. Do not use localhost.
+1. Use the media upload target flow so the image is reachable through S3/CloudFront. Do not use localhost or expiring upload URLs as `storage_url`.
 2. Create a publication against the Instagram professional `SocialAccount`.
 3. Confirm SocialOS rejects text-only Instagram publishing before enqueue.
 4. Publish now.
