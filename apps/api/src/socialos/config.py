@@ -109,8 +109,6 @@ def _validate_runtime_security(settings: Settings) -> None:
         "S3_MEDIA_BUCKET": settings.s3_media_bucket,
         "S3_MEDIA_REGION": settings.s3_media_region,
         "S3_MEDIA_PUBLIC_BASE_URL": settings.s3_media_public_base_url,
-        "AWS_ACCESS_KEY_ID": settings.aws_access_key_id,
-        "AWS_SECRET_ACCESS_KEY": settings.aws_secret_access_key,
     }
     missing = [name for name, value in required_s3_settings.items() if not value]
     if missing:

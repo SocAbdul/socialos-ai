@@ -10,6 +10,18 @@ module "media" {
   }
 }
 
+module "network" {
+  source = "../../modules/network"
+
+  name_prefix         = "socialos-staging"
+  vpc_cidr            = var.vpc_cidr
+  public_subnet_cidrs = var.public_subnet_cidrs
+
+  tags = {
+    LaunchStage = "private-beta"
+  }
+}
+
 module "budget" {
   source = "../../modules/budget"
 
@@ -37,6 +49,41 @@ module "github_oidc" {
   allowed_refs               = ["refs/heads/main"]
   existing_oidc_provider_arn = var.existing_github_oidc_provider_arn
   ecr_repository_arns        = values(module.ecr.repository_arns)
+
+  tags = {
+    LaunchStage = "private-beta"
+  }
+}
+
+module "runtime" {
+  source = "../../modules/ecs_runtime"
+
+  name_prefix   = "socialos-staging"
+  vpc_id        = module.network.vpc_id
+  subnet_ids    = module.network.public_subnet_ids
+  api_image     = var.staging_api_image
+  web_image     = var.staging_web_image
+  desired_count = var.staging_desired_count
+
+  api_environment = merge({
+    ENVIRONMENT              = "staging"
+    AUTH_MODE                = "clerk"
+    MEDIA_STORAGE_PROVIDER   = "s3"
+    S3_MEDIA_BUCKET          = module.media.bucket_id
+    S3_MEDIA_REGION          = var.aws_region
+    S3_MEDIA_PUBLIC_BASE_URL = module.media.media_public_base_url
+  }, var.staging_api_environment)
+
+  web_environment = merge({
+    NEXT_PUBLIC_DEMO_MODE = "false"
+  }, var.staging_web_environment)
+
+  api_secrets         = var.staging_api_secret_arns
+  web_secrets         = var.staging_web_secret_arns
+  secret_kms_key_arns = var.staging_secret_kms_key_arns
+  task_policy_arns = [
+    module.media_signer_iam.policy_arn,
+  ]
 
   tags = {
     LaunchStage = "private-beta"

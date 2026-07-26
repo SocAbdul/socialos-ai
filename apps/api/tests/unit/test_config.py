@@ -30,8 +30,6 @@ def configure_clerk_environment(
         monkeypatch.setenv("S3_MEDIA_BUCKET", "socialos-media-test")
         monkeypatch.setenv("S3_MEDIA_REGION", "eu-west-2")
         monkeypatch.setenv("S3_MEDIA_PUBLIC_BASE_URL", "https://media.example.test")
-        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIATEST")
-        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret-test-value")
 
 
 def test_rejects_unknown_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -117,3 +115,16 @@ def test_accepts_strong_production_configuration(monkeypatch: pytest.MonkeyPatch
     assert settings.environment == "production"
     assert settings.auth_mode == "clerk"
     assert settings.media_storage_provider == "s3"
+
+
+def test_production_s3_configuration_does_not_require_static_aws_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+
+    settings = get_settings()
+
+    assert settings.aws_access_key_id is None
+    assert settings.aws_secret_access_key is None
