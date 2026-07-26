@@ -14,3 +14,7 @@ variable "tags" {
   default     = {}
 }
 
+variable "cors_allowed_origins" {
+  description = "Frontend origins allowed to upload directly to S3 using presigned URLs."
+  type        = list(string)
+}

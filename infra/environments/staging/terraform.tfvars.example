@@ -1,0 +1,8 @@
+aws_region = "eu-west-1"
+
+# Must be globally unique.
+media_bucket_name = "socialos-ai-staging-media-REPLACE"
+
+media_cors_allowed_origins = [
+  "https://staging.socialos.ai",
+]
