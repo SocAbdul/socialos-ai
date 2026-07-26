@@ -1,0 +1,140 @@
+name: Publish Staging Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: Git ref to publish. Use main unless intentionally promoting another reviewed ref.
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: publish-staging-images-${{ inputs.git_ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_STAGING_DEPLOY_ROLE_ARN: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+      STAGING_API_ECR_REPOSITORY_URL: ${{ vars.STAGING_API_ECR_REPOSITORY_URL }}
+      STAGING_WEB_ECR_REPOSITORY_URL: ${{ vars.STAGING_WEB_ECR_REPOSITORY_URL }}
+      GH_TOKEN: ${{ github.token }}
+    outputs:
+      api_image: ${{ steps.publish-api.outputs.image_ref }}
+      web_image: ${{ steps.publish-web.outputs.image_ref }}
+      image_tag: ${{ steps.revision.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Resolve revision
+        id: revision
+        run: |
+          sha="$(git rev-parse HEAD)"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "Publishing immutable image tag: ${sha}"
+
+      - name: Check required staging variables
+        run: |
+          missing=0
+          for variable in AWS_REGION AWS_STAGING_DEPLOY_ROLE_ARN STAGING_API_ECR_REPOSITORY_URL STAGING_WEB_ECR_REPOSITORY_URL; do
+            if [ -z "${!variable}" ]; then
+              echo "::error::Missing GitHub staging environment variable: ${variable}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Require successful CI for revision
+        env:
+          DEPLOY_SHA: ${{ steps.revision.outputs.sha }}
+        run: |
+          successful_runs="$(
+            gh run list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --workflow CI \
+              --commit "${DEPLOY_SHA}" \
+              --json conclusion,status,headSha \
+              --jq "[.[] | select(.headSha == \"${DEPLOY_SHA}\" and .status == \"completed\" and .conclusion == \"success\")] | length"
+          )"
+
+          if [ "${successful_runs}" -lt 1 ]; then
+            echo "::error::Revision ${DEPLOY_SHA} does not have a successful completed CI run."
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to staging ECR
+        run: |
+          api_registry="${STAGING_API_ECR_REPOSITORY_URL%%/*}"
+          web_registry="${STAGING_WEB_ECR_REPOSITORY_URL%%/*}"
+
+          if [ "${api_registry}" != "${web_registry}" ]; then
+            echo "::error::API and web ECR repositories must be in the same registry/account for this workflow."
+            exit 1
+          fi
+
+          aws ecr get-login-password --region "${AWS_REGION}" |
+            docker login --username AWS --password-stdin "${api_registry}"
+
+      - name: Publish API image
+        id: publish-api
+        env:
+          IMAGE_TAG: ${{ steps.revision.outputs.sha }}
+          REPOSITORY_URL: ${{ env.STAGING_API_ECR_REPOSITORY_URL }}
+        run: |
+          repository_name="${REPOSITORY_URL#*/}"
+          image_ref="${REPOSITORY_URL}:${IMAGE_TAG}"
+
+          if aws ecr describe-images --repository-name "${repository_name}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "API image already exists in ECR: ${image_ref}"
+          else
+            docker build --target production -t "${image_ref}" apps/api
+            docker push "${image_ref}"
+          fi
+
+          echo "image_ref=${image_ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish web image
+        id: publish-web
+        env:
+          IMAGE_TAG: ${{ steps.revision.outputs.sha }}
+          REPOSITORY_URL: ${{ env.STAGING_WEB_ECR_REPOSITORY_URL }}
+        run: |
+          repository_name="${REPOSITORY_URL#*/}"
+          image_ref="${REPOSITORY_URL}:${IMAGE_TAG}"
+
+          if aws ecr describe-images --repository-name "${repository_name}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "Web image already exists in ECR: ${image_ref}"
+          else
+            docker build --target production -t "${image_ref}" apps/web
+            docker push "${image_ref}"
+          fi
+
+          echo "image_ref=${image_ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Deployment handoff
+        env:
+          API_IMAGE: ${{ steps.publish-api.outputs.image_ref }}
+          WEB_IMAGE: ${{ steps.publish-web.outputs.image_ref }}
+        run: |
+          echo "Published staging images:"
+          echo "API: ${API_IMAGE}"
+          echo "Web: ${WEB_IMAGE}"
+          echo "Next step: deploy these exact immutable image refs to the staging ECS services after ECS infrastructure exists."

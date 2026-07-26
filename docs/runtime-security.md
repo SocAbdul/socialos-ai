@@ -39,6 +39,11 @@ CD must deploy the exact commit SHA that successfully completed CI. A workflow t
 
 The current staging and production jobs are contracts only. They do not represent a real cloud deployment until image publishing, infrastructure update, migrations, health verification, and rollback are implemented.
 
+The staging image publication workflow is manual and publishes only immutable
+commit-SHA image tags after verifying that the exact revision has a successful
+completed CI run. It must use GitHub OIDC and must not use static AWS access
+keys.
+
 ## Production readiness checks
 
 Before the first production deployment, verify:

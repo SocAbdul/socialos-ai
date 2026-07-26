@@ -16,6 +16,8 @@ traffic until every launch gate below is complete and verified in staging.
   uploads, with S3 required outside local/test environments.
 - Terraform foundations for staging media delivery, budget alerts, ECR image
   repositories and GitHub OIDC deployment identity.
+- Manual, OIDC-based staging image publication workflow with immutable
+  commit-SHA tags and successful-CI verification.
 
 ## Required launch gates
 
