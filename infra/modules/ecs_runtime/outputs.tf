@@ -25,3 +25,7 @@ output "task_execution_role_arn" {
 output "task_role_arn" {
   value = aws_iam_role.task.arn
 }
+
+output "service_security_group_id" {
+  value = aws_security_group.service.id
+}

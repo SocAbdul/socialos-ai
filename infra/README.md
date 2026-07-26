@@ -25,6 +25,7 @@ The staging composition also prepares:
   long-lived AWS access keys.
 - low-cost ECS Fargate runtime behind an Application Load Balancer for staging
   smoke tests.
+- private RDS PostgreSQL and ElastiCache Redis foundations for staging state.
 
 If the AWS account already has a GitHub Actions OIDC provider, set
 `existing_github_oidc_provider_arn` in the staging tfvars instead of creating a
@@ -111,10 +112,12 @@ Images are tagged with the full commit SHA. Do not use mutable tags such as
 
 The staging environment now composes:
 
-- VPC with two public subnets;
+- VPC with two public subnets and two private isolated subnets;
 - internet-facing Application Load Balancer;
 - ECS Fargate cluster;
 - API and web services;
+- private RDS PostgreSQL instance;
+- private ElastiCache Redis replication group;
 - CloudWatch log groups;
 - ECS task execution and task roles;
 - media signing IAM policy attached to the API/web task role;
@@ -127,5 +130,15 @@ Before applying the staging runtime, publish immutable images with
 - `staging_web_image`
 - `staging_api_secret_arns`
 - `staging_web_secret_arns`
+
+The staging PostgreSQL module generates `DATABASE_URL` in Secrets Manager and
+passes its secret ARN to ECS. This keeps the value out of GitHub logs and task
+definitions, but the generated password is still present in Terraform state.
+Use encrypted remote state with strict IAM before applying. For production,
+review secret provisioning and rotation before reuse.
+
+`REDIS_URL` is configured as a non-secret environment variable because the
+staging Redis cluster is private and security-group restricted. Production Redis
+must revisit auth, TLS and subnet design.
 
 Do not store secret values in Terraform variables or GitHub workflow logs.

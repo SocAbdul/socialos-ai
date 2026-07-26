@@ -18,6 +18,20 @@ variable "public_subnet_cidrs" {
   }
 }
 
+variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private isolated subnets."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = (
+      length(var.private_subnet_cidrs) == 0 ||
+      length(var.private_subnet_cidrs) >= 2
+    )
+    error_message = "Private subnet CIDRs must be empty or include at least two subnets."
+  }
+}
+
 variable "tags" {
   description = "Tags applied to resources."
   type        = map(string)

@@ -20,6 +20,7 @@ traffic until every launch gate below is complete and verified in staging.
   commit-SHA tags and successful-CI verification.
 - Terraform foundation for a low-cost staging ECS Fargate runtime behind an
   Application Load Balancer.
+- Terraform foundation for private staging RDS PostgreSQL and ElastiCache Redis.
 
 ## Required launch gates
 
