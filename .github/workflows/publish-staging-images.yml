@@ -29,6 +29,7 @@ jobs:
       AWS_STAGING_DEPLOY_ROLE_ARN: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
       STAGING_API_ECR_REPOSITORY_URL: ${{ vars.STAGING_API_ECR_REPOSITORY_URL }}
       STAGING_WEB_ECR_REPOSITORY_URL: ${{ vars.STAGING_WEB_ECR_REPOSITORY_URL }}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
       GH_TOKEN: ${{ github.token }}
     outputs:
       api_image: ${{ steps.publish-api.outputs.image_ref }}
@@ -49,7 +50,7 @@ jobs:
       - name: Check required staging variables
         run: |
           missing=0
-          for variable in AWS_REGION AWS_STAGING_DEPLOY_ROLE_ARN STAGING_API_ECR_REPOSITORY_URL STAGING_WEB_ECR_REPOSITORY_URL; do
+          for variable in AWS_REGION AWS_STAGING_DEPLOY_ROLE_ARN STAGING_API_ECR_REPOSITORY_URL STAGING_WEB_ECR_REPOSITORY_URL NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY; do
             if [ -z "${!variable}" ]; then
               echo "::error::Missing GitHub staging environment variable: ${variable}"
               missing=1
@@ -123,7 +124,11 @@ jobs:
           if aws ecr describe-images --repository-name "${repository_name}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
             echo "Web image already exists in ECR: ${image_ref}"
           else
-            docker build --target production -t "${image_ref}" apps/web
+            docker build \
+              --target production \
+              --build-arg "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}" \
+              -t "${image_ref}" \
+              apps/web
             docker push "${image_ref}"
           fi
 

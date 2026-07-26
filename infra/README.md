@@ -78,13 +78,29 @@ variables:
 
 - `AWS_TERRAFORM_PLAN_ROLE_ARN`
 - `AWS_REGION`
+- `TF_STATE_BUCKET`
+- `TF_LOCK_TABLE`
 - `S3_MEDIA_BUCKET`
 - `STAGING_WEB_ORIGIN`
 - `MONTHLY_BUDGET_LIMIT_USD`
 - `BUDGET_ALERT_EMAIL`
+- `STAGING_API_IMAGE`
+- `STAGING_WEB_IMAGE`
+- `CLERK_JWKS_URL`
+- `CLERK_ISSUER`
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `TOKEN_ENCRYPTION_KEY_SECRET_ARN`
+- `CLERK_SECRET_KEY_SECRET_ARN`
+
+Set `ENABLE_STAGING_RUNTIME=false` or leave it unset for the first foundation
+apply. After ECR exists and images are published, set `ENABLE_STAGING_RUNTIME=true`
+and provide `STAGING_API_IMAGE` plus `STAGING_WEB_IMAGE`.
 
 The first Terraform bootstrap may still need to be run by an AWS administrator
 because the OIDC roles do not exist before Terraform is applied.
+
+Remote state bootstrap lives in `infra/bootstrap/state`. Follow
+`docs/runbooks/aws-staging-bootstrap.md` before running a real staging plan.
 
 ## GitHub Actions staging image publication
 
@@ -98,6 +114,7 @@ Configure these GitHub `staging` environment variables before running it:
 - `AWS_STAGING_DEPLOY_ROLE_ARN`
 - `STAGING_API_ECR_REPOSITORY_URL`
 - `STAGING_WEB_ECR_REPOSITORY_URL`
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 
 Use these Terraform outputs after staging bootstrap:
 
@@ -107,6 +124,9 @@ Use these Terraform outputs after staging bootstrap:
 
 Images are tagged with the full commit SHA. Do not use mutable tags such as
 `latest` for staging or production promotion.
+
+The web image is built with `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. If the Clerk
+publishable key changes, publish a new immutable web image tag.
 
 ## Staging runtime
 
@@ -138,7 +158,7 @@ Use encrypted remote state with strict IAM before applying. For production,
 review secret provisioning and rotation before reuse.
 
 `REDIS_URL` is configured as a non-secret environment variable because the
-staging Redis cluster is private and security-group restricted. Production Redis
-must revisit auth, TLS and subnet design.
+staging Redis cluster is private and VPC-restricted. Production Redis must
+revisit auth, TLS, service-specific security groups and subnet design.
 
 Do not store secret values in Terraform variables or GitHub workflow logs.

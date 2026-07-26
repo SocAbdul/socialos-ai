@@ -51,11 +51,17 @@ model; production must use private service subnets, TLS, WAF, private databases,
 restricted egress and reviewed network boundaries.
 
 Staging RDS PostgreSQL and Redis must be created in private isolated subnets.
-Only the ECS service security group should be allowed to connect. The staging
-PostgreSQL module generates `DATABASE_URL` in Secrets Manager; this keeps the
-runtime value out of GitHub logs, but the generated password remains sensitive
-Terraform state. Remote state must be encrypted and access-controlled before
-apply.
+They are not publicly accessible and are limited to the staging VPC CIDR to keep
+the first private-beta plan simple and avoid Terraform bootstrap cycles. The
+production topology must tighten this to service-specific security group
+relationships. The staging PostgreSQL module generates `DATABASE_URL` in Secrets
+Manager; this keeps the runtime value out of GitHub logs, but the generated
+password remains sensitive Terraform state. Remote state must be encrypted and
+access-controlled before apply.
+
+The staging Terraform backend must use the dedicated S3 bucket and DynamoDB lock
+table created from `infra/bootstrap/state`. Local state files must not be used
+for shared staging resources.
 
 ## Production readiness checks
 

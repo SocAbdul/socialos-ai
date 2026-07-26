@@ -35,40 +35,79 @@ jobs:
         env:
           AWS_TERRAFORM_PLAN_ROLE_ARN: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
           S3_MEDIA_BUCKET: ${{ vars.S3_MEDIA_BUCKET }}
           STAGING_WEB_ORIGIN: ${{ vars.STAGING_WEB_ORIGIN }}
           MONTHLY_BUDGET_LIMIT_USD: ${{ vars.MONTHLY_BUDGET_LIMIT_USD }}
           BUDGET_ALERT_EMAIL: ${{ vars.BUDGET_ALERT_EMAIL }}
+          CLERK_JWKS_URL: ${{ vars.CLERK_JWKS_URL }}
+          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          TOKEN_ENCRYPTION_KEY_SECRET_ARN: ${{ vars.TOKEN_ENCRYPTION_KEY_SECRET_ARN }}
+          CLERK_SECRET_KEY_SECRET_ARN: ${{ vars.CLERK_SECRET_KEY_SECRET_ARN }}
+          ENABLE_STAGING_RUNTIME: ${{ vars.ENABLE_STAGING_RUNTIME }}
+          STAGING_API_IMAGE: ${{ vars.STAGING_API_IMAGE }}
+          STAGING_WEB_IMAGE: ${{ vars.STAGING_WEB_IMAGE }}
         run: |
           missing=0
-          for variable in AWS_TERRAFORM_PLAN_ROLE_ARN AWS_REGION S3_MEDIA_BUCKET STAGING_WEB_ORIGIN MONTHLY_BUDGET_LIMIT_USD BUDGET_ALERT_EMAIL; do
+          for variable in AWS_TERRAFORM_PLAN_ROLE_ARN AWS_REGION TF_STATE_BUCKET TF_LOCK_TABLE S3_MEDIA_BUCKET STAGING_WEB_ORIGIN MONTHLY_BUDGET_LIMIT_USD BUDGET_ALERT_EMAIL CLERK_JWKS_URL CLERK_ISSUER NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY TOKEN_ENCRYPTION_KEY_SECRET_ARN CLERK_SECRET_KEY_SECRET_ARN; do
             if [ -z "${!variable}" ]; then
               echo "::error::Missing GitHub environment variable: ${variable}"
               missing=1
             fi
           done
+          if [ "${ENABLE_STAGING_RUNTIME:-false}" = "true" ]; then
+            for variable in STAGING_API_IMAGE STAGING_WEB_IMAGE; do
+              if [ -z "${!variable}" ]; then
+                echo "::error::Missing GitHub environment variable required when ENABLE_STAGING_RUNTIME=true: ${variable}"
+                missing=1
+              fi
+            done
+          fi
           exit "${missing}"
       - uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - name: Write tfvars
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          S3_MEDIA_BUCKET: ${{ vars.S3_MEDIA_BUCKET }}
+          STAGING_WEB_ORIGIN: ${{ vars.STAGING_WEB_ORIGIN }}
+          MONTHLY_BUDGET_LIMIT_USD: ${{ vars.MONTHLY_BUDGET_LIMIT_USD }}
+          BUDGET_ALERT_EMAIL: ${{ vars.BUDGET_ALERT_EMAIL }}
+          EXISTING_GITHUB_OIDC_PROVIDER_ARN: ${{ vars.EXISTING_GITHUB_OIDC_PROVIDER_ARN }}
+          STAGING_API_IMAGE: ${{ vars.STAGING_API_IMAGE }}
+          STAGING_WEB_IMAGE: ${{ vars.STAGING_WEB_IMAGE }}
+          STAGING_DESIRED_COUNT: ${{ vars.STAGING_DESIRED_COUNT }}
+          ENABLE_STAGING_RUNTIME: ${{ vars.ENABLE_STAGING_RUNTIME }}
+          CLERK_JWKS_URL: ${{ vars.CLERK_JWKS_URL }}
+          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+          CLERK_AUDIENCE: ${{ vars.CLERK_AUDIENCE }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          TOKEN_ENCRYPTION_KEY_SECRET_ARN: ${{ vars.TOKEN_ENCRYPTION_KEY_SECRET_ARN }}
+          CLERK_SECRET_KEY_SECRET_ARN: ${{ vars.CLERK_SECRET_KEY_SECRET_ARN }}
+          META_APP_ID: ${{ vars.META_APP_ID }}
+          META_APP_SECRET_ARN: ${{ vars.META_APP_SECRET_ARN }}
+          STAGING_SECRET_KMS_KEY_ARNS_HCL: ${{ vars.STAGING_SECRET_KMS_KEY_ARNS_HCL }}
         run: |
-          cd "infra/environments/${TF_ENVIRONMENT}"
-          cat > github.auto.tfvars <<'EOF'
-          aws_region = "${{ vars.AWS_REGION }}"
-          media_bucket_name = "${{ vars.S3_MEDIA_BUCKET }}"
-          media_cors_allowed_origins = ["${{ vars.STAGING_WEB_ORIGIN }}"]
-          monthly_budget_limit_usd = ${{ vars.MONTHLY_BUDGET_LIMIT_USD }}
-          budget_alert_email = "${{ vars.BUDGET_ALERT_EMAIL }}"
-          github_repository = "${{ github.repository }}"
-          EOF
+          python .github/scripts/write_staging_tfvars.py "infra/environments/${TF_ENVIRONMENT}/github.auto.tfvars"
       - name: Check Terraform formatting
         run: terraform fmt -check -recursive infra
       - name: Initialize Terraform
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
         run: |
           cd "infra/environments/${TF_ENVIRONMENT}"
-          terraform init -backend=false
+          terraform init \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=socialos-ai/${TF_ENVIRONMENT}/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
+            -backend-config="encrypt=true"
       - name: Validate Terraform
         run: |
           cd "infra/environments/${TF_ENVIRONMENT}"

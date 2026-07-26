@@ -1,0 +1,6 @@
+aws_region = "eu-west-1"
+
+# Must be globally unique.
+state_bucket_name = "socialos-ai-terraform-state-REPLACE"
+
+lock_table_name = "socialos-ai-terraform-locks"

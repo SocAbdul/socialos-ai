@@ -35,12 +35,18 @@ Pull Request approved
 GitHub `staging` environment variables documented in `infra/README.md` and does
 not run `terraform apply`.
 
+The staging plan workflow uses the S3/DynamoDB remote backend created by
+`infra/bootstrap/state`. Bootstrap must happen before the first real plan.
+
 `publish-staging-images.yml` is a manual staging-only image publication
 workflow. It resolves the selected Git ref to an exact commit SHA, requires a
 successful completed CI run for that SHA, assumes the staging AWS role through
 GitHub OIDC, and publishes immutable API/web images to ECR using the commit SHA
 as the tag. It is idempotent: if an image tag already exists in ECR, the workflow
 reuses it instead of trying to overwrite an immutable tag.
+
+The staging web image is built with `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, because
+Next.js public environment values can be compiled into client bundles.
 
 After staging infrastructure exists, deploy only the exact image refs emitted by
 the image publication workflow. Do not promote `latest` or locally built images.
