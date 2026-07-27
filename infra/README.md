@@ -162,3 +162,13 @@ staging Redis cluster is private and VPC-restricted. Production Redis must
 revisit auth, TLS, service-specific security groups and subnet design.
 
 Do not store secret values in Terraform variables or GitHub workflow logs.
+
+## GitHub Actions staging operations
+
+After the staging runtime exists, use `docs/runbooks/staging-operations.md` for:
+
+- running Alembic migrations as a one-off ECS task;
+- waiting for API and web ECS services to become stable;
+- checking API health and the web entrypoint through the load balancer.
+
+These workflows are manual-only and scoped to the GitHub `staging` environment.

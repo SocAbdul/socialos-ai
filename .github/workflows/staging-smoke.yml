@@ -1,0 +1,62 @@
+name: Staging Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_STAGING_DEPLOY_ROLE_ARN: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+      STAGING_ECS_CLUSTER_NAME: ${{ vars.STAGING_ECS_CLUSTER_NAME }}
+      STAGING_API_SERVICE_NAME: ${{ vars.STAGING_API_SERVICE_NAME }}
+      STAGING_WEB_SERVICE_NAME: ${{ vars.STAGING_WEB_SERVICE_NAME }}
+      STAGING_ALB_URL: ${{ vars.STAGING_ALB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required environment variables
+        run: |
+          missing=0
+          for variable in AWS_REGION AWS_STAGING_DEPLOY_ROLE_ARN STAGING_ECS_CLUSTER_NAME STAGING_API_SERVICE_NAME STAGING_WEB_SERVICE_NAME STAGING_ALB_URL; do
+            if [ -z "${!variable}" ]; then
+              echo "::error::Missing GitHub environment variable: ${variable}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Wait for ECS services to become stable
+        run: |
+          aws ecs wait services-stable \
+            --cluster "${STAGING_ECS_CLUSTER_NAME}" \
+            --services "${STAGING_API_SERVICE_NAME}" "${STAGING_WEB_SERVICE_NAME}"
+      - name: Check API health through the load balancer
+        run: |
+          base_url="${STAGING_ALB_URL%/}"
+          case "${base_url}" in
+            http://*|https://*) ;;
+            *) base_url="http://${base_url}" ;;
+          esac
+          curl --fail --silent --show-error --max-time 20 "${base_url}/health/live"
+      - name: Check web entrypoint through the load balancer
+        run: |
+          base_url="${STAGING_ALB_URL%/}"
+          case "${base_url}" in
+            http://*|https://*) ;;
+            *) base_url="http://${base_url}" ;;
+          esac
+          curl --fail --silent --show-error --max-time 20 "${base_url}/" >/dev/null
