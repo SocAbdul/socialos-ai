@@ -1,5 +1,3 @@
-Contact: mailto:security@socialos.ai
-Contact: mailto:support@socialos.ai
+Contact: https://github.com/SocAbdul/socialos-ai/security/advisories/new
+Policy: https://github.com/SocAbdul/socialos-ai/security/policy
 Preferred-Languages: en, es
-Canonical: https://socialos.ai/.well-known/security.txt
-Policy: https://socialos.ai/security

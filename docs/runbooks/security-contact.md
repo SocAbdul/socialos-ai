@@ -3,12 +3,14 @@
 SocialOS AI exposes `/.well-known/security.txt` so security researchers and
 operators have an obvious responsible-disclosure path.
 
-## Current contacts
+## Current reporting path
 
-- `security@socialos.ai`
-- `support@socialos.ai`
+Use GitHub Security Advisories:
 
-These mailboxes must exist before any public launch or public beta traffic.
+https://github.com/SocAbdul/socialos-ai/security/advisories/new
+
+Do not advertise project-owned email addresses until the mailboxes exist and are
+monitored.
 
 ## Before public launch
 
@@ -17,7 +19,7 @@ Verify:
 - the security mailbox exists and is monitored;
 - at least two founders/operators can access or receive alerts from it;
 - inbound messages are not filtered to spam;
-- the canonical security policy page exists if `https://socialos.ai/security`
+- a canonical security policy page exists before any custom-domain canonical URL
   is advertised publicly;
 - the incident response owner knows how to create a private GitHub security
   advisory or internal issue without exposing sensitive reports.
