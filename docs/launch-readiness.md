@@ -39,6 +39,8 @@ traffic until every launch gate below is complete and verified in staging.
   then verify the direct media upload flow in staging.
 - **Reliability:** add structured error tracking, metrics, traces, dashboards,
   paging, dead-letter queues, retry policies and restore-tested backups.
+- **Rollback:** verify `runbooks/staging-rollback.md` on a real staging
+  deployment before creating the production deployment workflow.
 - **Security:** complete threat modeling, dependency and container scanning,
   secret rotation, encryption review, rate limiting and an external penetration
   test.

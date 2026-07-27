@@ -55,6 +55,9 @@ the image publication workflow. Do not promote `latest` or locally built images.
 Use them after the runtime exists to run Alembic as a one-off ECS task and verify
 the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
 
+If staging degrades after a deployment, follow
+`docs/runbooks/staging-rollback.md` before promoting or retrying production.
+
 ## Recommended Repository Settings
 
 - Require pull requests before merging to `main`.
@@ -93,3 +96,6 @@ the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
    - migrations
    - rollback notes
    - known risks
+
+If a release fails staging validation, stop the release and follow the staging
+rollback runbook before opening a follow-up fix PR.
