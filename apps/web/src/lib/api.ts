@@ -196,6 +196,21 @@ export async function getPublication(publicationId: string): Promise<Publication
   }
 }
 
+export async function retryPublication(publicationId: string): Promise<Publication | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/publications/${publicationId}/retry`, {
+      method: "POST",
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return publicationSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
 export async function listPlatformConnections(workspaceId: string): Promise<PlatformConnection[]> {
   try {
     const headers = await authenticationHeaders();

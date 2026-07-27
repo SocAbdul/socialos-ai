@@ -488,9 +488,51 @@ class PublishPublicationNow:
             publication = await uow.publications.get(publication_id, workspace.id)
             if publication is None:
                 raise ApplicationNotFoundError("Publication not found")
-            if publication.status in {PublicationStatus.PUBLISHED, PublicationStatus.PUBLISHING}:
+            if publication.status in {
+                PublicationStatus.PUBLISHED,
+                PublicationStatus.PUBLISHING,
+                PublicationStatus.QUEUED,
+            }:
                 return publication
+            if publication.status in {
+                PublicationStatus.FAILED_PERMANENT,
+                PublicationStatus.CANCELLED,
+            }:
+                raise ValueError("Publication cannot be published from its current state")
             publication.status = PublicationStatus.QUEUED
+            publication.next_attempt_at = datetime.now(UTC)
+            publication.updated_at = datetime.now(UTC)
+            await uow.publications.update(publication)
+            await uow.commit()
+        await self._job_queue.enqueue_publication(publication.id)
+        return publication
+
+
+class RetryPublication:
+    def __init__(
+        self,
+        uow_factory: Callable[[], SocialUnitOfWork],
+        job_queue: JobQueue,
+    ) -> None:
+        self._uow_factory = uow_factory
+        self._job_queue = job_queue
+
+    async def execute(self, actor: Actor, publication_id: UUID) -> Publication:
+        actor.require(Permission.POSTS_WRITE)
+        async with self._uow_factory() as uow:
+            workspace = await uow.workspaces.get_by_external_organization_id(actor.organization_id)
+            if workspace is None:
+                raise ApplicationNotFoundError("Workspace not found")
+            publication = await uow.publications.get(publication_id, workspace.id)
+            if publication is None:
+                raise ApplicationNotFoundError("Publication not found")
+            if publication.status not in {
+                PublicationStatus.FAILED_RETRYABLE,
+                PublicationStatus.UNCERTAIN,
+            }:
+                raise ValueError("Only retryable or uncertain publications can be retried")
+            publication.status = PublicationStatus.QUEUED
+            publication.last_error = None
             publication.next_attempt_at = datetime.now(UTC)
             publication.updated_at = datetime.now(UTC)
             await uow.publications.update(publication)
