@@ -101,6 +101,10 @@ const mediaAssetSchema = z.object({
   content_type: z.string(),
 });
 
+const mediaAssetListSchema = z.object({
+  items: z.array(mediaAssetSchema),
+});
+
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type Publication = z.infer<typeof publicationSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
@@ -172,6 +176,20 @@ export async function listPlatformConnections(workspaceId: string): Promise<Plat
     });
     if (!response.ok) return [];
     return connectionListSchema.parse(await response.json()).items;
+  } catch {
+    return [];
+  }
+}
+
+export async function listMediaAssets(workspaceId: string): Promise<MediaAsset[]> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/media-assets`, {
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    return mediaAssetListSchema.parse(await response.json()).items;
   } catch {
     return [];
   }

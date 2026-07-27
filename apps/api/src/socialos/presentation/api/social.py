@@ -24,6 +24,7 @@ from socialos.application.social.use_cases import (
     CreatePublicationCommand,
     CreateWorkspace,
     CreateWorkspaceCommand,
+    ListMediaAssets,
     ListPlatformConnections,
     ListPublications,
     ListSocialAccounts,
@@ -282,6 +283,10 @@ class MediaAssetResponse(BaseModel):
             storage_url=asset.storage_url,
             content_type=asset.content_type,
         )
+
+
+class MediaAssetListResponse(BaseModel):
+    items: list[MediaAssetResponse]
 
 
 class AdaptContentRequest(BaseModel):
@@ -592,6 +597,15 @@ async def register_media_asset(
         ),
     )
     return MediaAssetResponse.from_domain(asset)
+
+
+@router.get("/workspaces/{workspace_id}/media-assets")
+async def list_media_assets(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> MediaAssetListResponse:
+    assets = await ListMediaAssets(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return MediaAssetListResponse(items=[MediaAssetResponse.from_domain(asset) for asset in assets])
 
 
 @router.post(
