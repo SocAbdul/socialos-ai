@@ -74,12 +74,14 @@ the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
 - Enable Dependabot alerts and security updates.
 - Use labels:
   - `bug`
-  - `feature`
+  - `enhancement`
   - `security`
   - `meta`
   - `frontend`
   - `backend`
   - `infra`
+  - `quality`
+  - `release`
   - `triage`
 
 ## Release Process
