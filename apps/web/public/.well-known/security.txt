@@ -1,0 +1,5 @@
+Contact: mailto:security@socialos.ai
+Contact: mailto:support@socialos.ai
+Preferred-Languages: en, es
+Canonical: https://socialos.ai/.well-known/security.txt
+Policy: https://socialos.ai/security
