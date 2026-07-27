@@ -472,6 +472,39 @@ class PublishPublicationNow:
         return publication
 
 
+class CancelPublication:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, publication_id: UUID) -> Publication:
+        actor.require(Permission.POSTS_WRITE)
+        async with self._uow_factory() as uow:
+            workspace = await uow.workspaces.get_by_external_organization_id(actor.organization_id)
+            if workspace is None:
+                raise ApplicationNotFoundError("Workspace not found")
+            publication = await uow.publications.get(publication_id, workspace.id)
+            if publication is None:
+                raise ApplicationNotFoundError("Publication not found")
+            if publication.status == PublicationStatus.CANCELLED:
+                return publication
+            if publication.status not in {
+                PublicationStatus.DRAFT,
+                PublicationStatus.READY,
+                PublicationStatus.SCHEDULED,
+                PublicationStatus.QUEUED,
+                PublicationStatus.FAILED_RETRYABLE,
+                PublicationStatus.UNCERTAIN,
+            }:
+                raise ValueError("Publication cannot be cancelled from its current state")
+            publication.status = PublicationStatus.CANCELLED
+            publication.next_attempt_at = None
+            publication.last_error = None
+            publication.updated_at = datetime.now(UTC)
+            await uow.publications.update(publication)
+            await uow.commit()
+            return publication
+
+
 class PublishQueuedPublication:
     def __init__(
         self,

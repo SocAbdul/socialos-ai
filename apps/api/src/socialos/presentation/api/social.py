@@ -12,6 +12,7 @@ from socialos.application.social.use_cases import (
     AdaptContentForPlatform,
     ApplicationNotFoundError,
     BuildMetaAuthorizationUrl,
+    CancelPublication,
     CompleteMetaOAuth,
     ConnectionAuthorizationError,
     CreateBrandProfile,
@@ -652,4 +653,16 @@ async def publish_now(
     publication = await PublishPublicationNow(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
         actor, publication_id
     )
+    return PublicationResponse.from_domain(publication)
+
+
+@router.post("/publications/{publication_id}/cancel")
+async def cancel_publication(
+    publication_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationResponse:
+    try:
+        publication = await CancelPublication(SqlAlchemyUnitOfWork).execute(actor, publication_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return PublicationResponse.from_domain(publication)
