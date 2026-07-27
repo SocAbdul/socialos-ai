@@ -323,6 +323,17 @@ class RegisterMediaAsset:
             return asset
 
 
+class ListMediaAssets:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, workspace_id: UUID) -> list[MediaAsset]:
+        actor.require(Permission.POSTS_READ)
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, workspace_id)
+            return list(await uow.media_assets.list_for_workspace(workspace_id))
+
+
 @dataclass(frozen=True, slots=True)
 class RequestMediaUploadCommand:
     workspace_id: UUID
