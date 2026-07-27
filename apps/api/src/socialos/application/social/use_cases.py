@@ -44,6 +44,10 @@ class ConnectionAuthorizationError(PermissionError):
     """Raised when a platform connection cannot be authorized or validated."""
 
 
+class _PermanentPublicationError(RuntimeError):
+    retryable = False
+
+
 @dataclass(frozen=True, slots=True)
 class CreateWorkspaceCommand:
     name: str
@@ -554,21 +558,19 @@ class PublishQueuedPublication:
                 )
                 if connection is None:
                     return publication
+                provider = self._providers[connection.provider]
+                provider_name = provider.provider_name
                 account = await uow.social_accounts.get(
                     publication.social_account_id, publication.workspace_id
                 )
                 if account is None:
-                    publication.status = PublicationStatus.FAILED_PERMANENT
-                    publication.last_error = "Social account not found"
-                    await uow.publications.update(publication)
-                    await uow.commit()
-                    return publication
+                    raise _PermanentPublicationError("Social account not found")
                 if publication.media_asset_id:
                     media_asset = await uow.media_assets.get(
                         publication.media_asset_id, publication.workspace_id
                     )
-                provider = self._providers[connection.provider]
-                provider_name = provider.provider_name
+                    if media_asset is None:
+                        raise _PermanentPublicationError("Media asset not found")
                 if media_asset is None:
                     result = await provider.publish_text(
                         connection,
