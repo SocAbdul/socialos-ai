@@ -67,6 +67,42 @@ const publicationListSchema = z.object({
   items: z.array(publicationSchema),
 });
 
+const brandProfileSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  name: z.string(),
+  voice: z.string(),
+  audience: z.string(),
+});
+
+const campaignSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  brand_profile_id: z.string().uuid(),
+  name: z.string(),
+});
+
+const contentItemSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  campaign_id: z.string().uuid(),
+  body: z.string(),
+});
+
+const aiGenerationSchema = z.object({
+  id: z.string().uuid(),
+  operation: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  prompt_version: z.string(),
+  input_hash: z.string(),
+  token_usage: z.record(z.string(), z.number().int()),
+  estimated_cost: z.string(),
+  latency_ms: z.number().int(),
+  result: z.string(),
+  created_at: z.string(),
+});
+
 const connectionSchema = z.object({
   id: z.string().uuid(),
   workspace_id: z.string().uuid(),
@@ -103,6 +139,10 @@ const mediaAssetSchema = z.object({
 
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type Publication = z.infer<typeof publicationSchema>;
+export type BrandProfile = z.infer<typeof brandProfileSchema>;
+export type Campaign = z.infer<typeof campaignSchema>;
+export type ContentItem = z.infer<typeof contentItemSchema>;
+export type AIGeneration = z.infer<typeof aiGenerationSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
@@ -144,6 +184,162 @@ export async function ensureWorkspace(name = "Kinetic Mobiles"): Promise<Workspa
     });
     if (!response.ok) return null;
     return workspaceSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function createBrandProfile(
+  workspaceId: string,
+  input: {
+    name: string;
+    voice?: string;
+    audience?: string;
+  },
+): Promise<BrandProfile | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/brand-profiles`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: input.name,
+        voice: input.voice ?? "",
+        audience: input.audience ?? "",
+      }),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return brandProfileSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function createCampaign(
+  workspaceId: string,
+  input: {
+    brand_profile_id: string;
+    name: string;
+  },
+): Promise<Campaign | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/campaigns`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return campaignSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function createContentItem(
+  workspaceId: string,
+  input: {
+    campaign_id: string;
+    body: string;
+  },
+): Promise<ContentItem | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/content-items`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return contentItemSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function adaptContentForPlatform(
+  workspaceId: string,
+  input: {
+    text: string;
+    platform: "facebook" | "instagram";
+  },
+): Promise<AIGeneration | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/ai/adapt-for-platform`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return aiGenerationSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function createPublication(
+  workspaceId: string,
+  input: {
+    content_item_id: string;
+    platform_connection_id: string;
+    social_account_id: string;
+    platform: "facebook" | "instagram";
+    caption: string;
+    media_asset_id?: string | null;
+  },
+): Promise<Publication | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/publications`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...input,
+        media_asset_id: input.media_asset_id ?? null,
+      }),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return publicationSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function schedulePublication(
+  publicationId: string,
+  runAt: string,
+): Promise<Publication | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/publications/${publicationId}/schedule`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ run_at: runAt }),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return publicationSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function publishPublicationNow(publicationId: string): Promise<Publication | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/publications/${publicationId}/publish-now`, {
+      method: "POST",
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return publicationSchema.parse(await response.json());
   } catch {
     return null;
   }
