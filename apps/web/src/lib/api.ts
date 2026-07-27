@@ -71,7 +71,12 @@ const publicationAttemptSchema = z.object({
   id: z.string().uuid(),
   publication_id: z.string().uuid(),
   attempt_number: z.number().int().positive(),
-  status: z.enum(["started", "succeeded", "failed_retryable", "failed_permanent"]),
+  status: z.enum([
+    "started",
+    "succeeded",
+    "failed_retryable",
+    "failed_permanent",
+  ]),
   provider: z.string(),
   request_id: z.string().nullable(),
   error_code: z.string().nullable(),
@@ -116,6 +121,20 @@ const contentItemSchema = z.object({
 
 const contentItemListSchema = z.object({
   items: z.array(contentItemSchema),
+});
+
+const aiGenerationSchema = z.object({
+  id: z.string().uuid(),
+  operation: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  prompt_version: z.string(),
+  input_hash: z.string(),
+  token_usage: z.record(z.string(), z.number().int()),
+  estimated_cost: z.string(),
+  latency_ms: z.number().int(),
+  result: z.string(),
+  created_at: z.string(),
 });
 
 const connectionSchema = z.object({
@@ -163,6 +182,7 @@ export type PublicationDetail = z.infer<typeof publicationDetailSchema>;
 export type BrandProfile = z.infer<typeof brandProfileSchema>;
 export type Campaign = z.infer<typeof campaignSchema>;
 export type ContentItem = z.infer<typeof contentItemSchema>;
+export type AIGeneration = z.infer<typeof aiGenerationSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
@@ -193,7 +213,9 @@ export async function listPosts(): Promise<SocialPost[]> {
   }
 }
 
-export async function ensureWorkspace(name = "Kinetic Mobiles"): Promise<Workspace | null> {
+export async function ensureWorkspace(
+  name = "Kinetic Mobiles",
+): Promise<Workspace | null> {
   try {
     const headers = await authenticationHeaders();
     const response = await fetch(`${API_URL}/workspaces`, {
@@ -209,13 +231,197 @@ export async function ensureWorkspace(name = "Kinetic Mobiles"): Promise<Workspa
   }
 }
 
-export async function listPublications(workspaceId: string): Promise<Publication[]> {
+export async function createBrandProfile(
+  workspaceId: string,
+  input: {
+    name: string;
+    voice?: string;
+    audience?: string;
+  },
+): Promise<BrandProfile | null> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/publications`, {
-      headers,
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/brand-profiles`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: input.name,
+          voice: input.voice ?? "",
+          audience: input.audience ?? "",
+        }),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    return brandProfileSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function createCampaign(
+  workspaceId: string,
+  input: {
+    brand_profile_id: string;
+    name: string;
+  },
+): Promise<Campaign | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/campaigns`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    return campaignSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function createContentItem(
+  workspaceId: string,
+  input: {
+    campaign_id: string;
+    body: string;
+  },
+): Promise<ContentItem | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/content-items`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    return contentItemSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function adaptContentForPlatform(
+  workspaceId: string,
+  input: {
+    text: string;
+    platform: "facebook" | "instagram";
+  },
+): Promise<AIGeneration | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/ai/adapt-for-platform`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    return aiGenerationSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function createPublication(
+  workspaceId: string,
+  input: {
+    content_item_id: string;
+    platform_connection_id: string;
+    social_account_id: string;
+    platform: "facebook" | "instagram";
+    caption: string;
+    media_asset_id?: string | null;
+  },
+): Promise<Publication | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/publications`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...input,
+          media_asset_id: input.media_asset_id ?? null,
+        }),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    return publicationSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function schedulePublication(
+  publicationId: string,
+  runAt: string,
+): Promise<Publication | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/publications/${publicationId}/schedule`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ run_at: runAt }),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    return publicationSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function publishPublicationNow(
+  publicationId: string,
+): Promise<Publication | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/publications/${publicationId}/publish-now`,
+      {
+        method: "POST",
+        headers,
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    return publicationSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function listPublications(
+  workspaceId: string,
+): Promise<Publication[]> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/publications`,
+      {
+        headers,
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return [];
     return publicationListSchema.parse(await response.json()).items;
   } catch {
@@ -223,7 +429,9 @@ export async function listPublications(workspaceId: string): Promise<Publication
   }
 }
 
-export async function getPublication(publicationId: string): Promise<PublicationDetail | null> {
+export async function getPublication(
+  publicationId: string,
+): Promise<PublicationDetail | null> {
   try {
     const headers = await authenticationHeaders();
     const response = await fetch(`${API_URL}/publications/${publicationId}`, {
@@ -237,14 +445,19 @@ export async function getPublication(publicationId: string): Promise<Publication
   }
 }
 
-export async function retryPublication(publicationId: string): Promise<Publication | null> {
+export async function retryPublication(
+  publicationId: string,
+): Promise<Publication | null> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/publications/${publicationId}/retry`, {
-      method: "POST",
-      headers,
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/publications/${publicationId}/retry`,
+      {
+        method: "POST",
+        headers,
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return null;
     return publicationSchema.parse(await response.json());
   } catch {
@@ -252,14 +465,19 @@ export async function retryPublication(publicationId: string): Promise<Publicati
   }
 }
 
-export async function cancelPublication(publicationId: string): Promise<Publication | null> {
+export async function cancelPublication(
+  publicationId: string,
+): Promise<Publication | null> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/publications/${publicationId}/cancel`, {
-      method: "POST",
-      headers,
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/publications/${publicationId}/cancel`,
+      {
+        method: "POST",
+        headers,
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return null;
     return publicationSchema.parse(await response.json());
   } catch {
@@ -267,13 +485,18 @@ export async function cancelPublication(publicationId: string): Promise<Publicat
   }
 }
 
-export async function listBrandProfiles(workspaceId: string): Promise<BrandProfile[]> {
+export async function listBrandProfiles(
+  workspaceId: string,
+): Promise<BrandProfile[]> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/brand-profiles`, {
-      headers,
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/brand-profiles`,
+      {
+        headers,
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return [];
     return brandProfileListSchema.parse(await response.json()).items;
   } catch {
@@ -284,10 +507,13 @@ export async function listBrandProfiles(workspaceId: string): Promise<BrandProfi
 export async function listCampaigns(workspaceId: string): Promise<Campaign[]> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/campaigns`, {
-      headers,
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/campaigns`,
+      {
+        headers,
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return [];
     return campaignListSchema.parse(await response.json()).items;
   } catch {
@@ -295,13 +521,18 @@ export async function listCampaigns(workspaceId: string): Promise<Campaign[]> {
   }
 }
 
-export async function listContentItems(workspaceId: string): Promise<ContentItem[]> {
+export async function listContentItems(
+  workspaceId: string,
+): Promise<ContentItem[]> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/content-items`, {
-      headers,
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/content-items`,
+      {
+        headers,
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return [];
     return contentItemListSchema.parse(await response.json()).items;
   } catch {
@@ -309,13 +540,18 @@ export async function listContentItems(workspaceId: string): Promise<ContentItem
   }
 }
 
-export async function listPlatformConnections(workspaceId: string): Promise<PlatformConnection[]> {
+export async function listPlatformConnections(
+  workspaceId: string,
+): Promise<PlatformConnection[]> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/platform-connections`, {
-      headers,
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/platform-connections`,
+      {
+        headers,
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return [];
     return connectionListSchema.parse(await response.json()).items;
   } catch {
@@ -323,13 +559,18 @@ export async function listPlatformConnections(workspaceId: string): Promise<Plat
   }
 }
 
-export async function listMediaAssets(workspaceId: string): Promise<MediaAsset[]> {
+export async function listMediaAssets(
+  workspaceId: string,
+): Promise<MediaAsset[]> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/media-assets`, {
-      headers,
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/media-assets`,
+      {
+        headers,
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return [];
     return mediaAssetListSchema.parse(await response.json()).items;
   } catch {
@@ -348,12 +589,15 @@ export async function requestMediaUploadTarget(
 ): Promise<MediaUploadTarget | null> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/media-assets/upload-target`, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/media-assets/upload-target`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return null;
     return mediaUploadTargetSchema.parse(await response.json());
   } catch {
@@ -372,12 +616,15 @@ export async function registerMediaAsset(
 ): Promise<MediaAsset | null> {
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/media-assets`, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/media-assets`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        cache: "no-store",
+      },
+    );
     if (!response.ok) return null;
     return mediaAssetSchema.parse(await response.json());
   } catch {
