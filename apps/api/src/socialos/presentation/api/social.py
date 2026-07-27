@@ -24,6 +24,8 @@ from socialos.application.social.use_cases import (
     CreatePublicationCommand,
     CreateWorkspace,
     CreateWorkspaceCommand,
+    ListBrandProfiles,
+    ListCampaigns,
     ListPlatformConnections,
     ListPublications,
     ListSocialAccounts,
@@ -116,6 +118,10 @@ class BrandProfileResponse(BaseModel):
             voice=brand.voice,
             audience=brand.audience,
         )
+
+
+class BrandProfileListResponse(BaseModel):
+    items: list[BrandProfileResponse]
 
 
 class AuthorizationUrlResponse(BaseModel):
@@ -216,6 +222,10 @@ class CampaignResponse(BaseModel):
             brand_profile_id=campaign.brand_profile_id,
             name=campaign.name,
         )
+
+
+class CampaignListResponse(BaseModel):
+    items: list[CampaignResponse]
 
 
 class CreateContentItemRequest(BaseModel):
@@ -408,6 +418,17 @@ async def create_brand_profile(
     return BrandProfileResponse.from_domain(brand)
 
 
+@router.get("/workspaces/{workspace_id}/brand-profiles")
+async def list_brand_profiles(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> BrandProfileListResponse:
+    brands = await ListBrandProfiles(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return BrandProfileListResponse(
+        items=[BrandProfileResponse.from_domain(brand) for brand in brands]
+    )
+
+
 @router.get(
     "/workspaces/{workspace_id}/platform-connections/meta/authorize",
 )
@@ -498,6 +519,17 @@ async def create_campaign(
         ),
     )
     return CampaignResponse.from_domain(campaign)
+
+
+@router.get("/workspaces/{workspace_id}/campaigns")
+async def list_campaigns(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> CampaignListResponse:
+    campaigns = await ListCampaigns(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return CampaignListResponse(
+        items=[CampaignResponse.from_domain(campaign) for campaign in campaigns]
+    )
 
 
 @router.post(

@@ -67,6 +67,29 @@ const publicationListSchema = z.object({
   items: z.array(publicationSchema),
 });
 
+const brandProfileSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  name: z.string(),
+  voice: z.string(),
+  audience: z.string(),
+});
+
+const brandProfileListSchema = z.object({
+  items: z.array(brandProfileSchema),
+});
+
+const campaignSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  brand_profile_id: z.string().uuid(),
+  name: z.string(),
+});
+
+const campaignListSchema = z.object({
+  items: z.array(campaignSchema),
+});
+
 const connectionSchema = z.object({
   id: z.string().uuid(),
   workspace_id: z.string().uuid(),
@@ -103,6 +126,8 @@ const mediaAssetSchema = z.object({
 
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type Publication = z.infer<typeof publicationSchema>;
+export type BrandProfile = z.infer<typeof brandProfileSchema>;
+export type Campaign = z.infer<typeof campaignSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
@@ -158,6 +183,34 @@ export async function listPublications(workspaceId: string): Promise<Publication
     });
     if (!response.ok) return [];
     return publicationListSchema.parse(await response.json()).items;
+  } catch {
+    return [];
+  }
+}
+
+export async function listBrandProfiles(workspaceId: string): Promise<BrandProfile[]> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/brand-profiles`, {
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    return brandProfileListSchema.parse(await response.json()).items;
+  } catch {
+    return [];
+  }
+}
+
+export async function listCampaigns(workspaceId: string): Promise<Campaign[]> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/campaigns`, {
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    return campaignListSchema.parse(await response.json()).items;
   } catch {
     return [];
   }
