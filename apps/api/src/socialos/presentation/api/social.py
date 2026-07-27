@@ -24,6 +24,7 @@ from socialos.application.social.use_cases import (
     CreatePublicationCommand,
     CreateWorkspace,
     CreateWorkspaceCommand,
+    GetPublicationDetail,
     ListPlatformConnections,
     ListPublications,
     ListSocialAccounts,
@@ -45,6 +46,7 @@ from socialos.domain.social import (
     Platform,
     PlatformConnection,
     Publication,
+    PublicationAttempt,
     SocialAccount,
     Workspace,
 )
@@ -376,6 +378,38 @@ class PublicationListResponse(BaseModel):
     items: list[PublicationResponse]
 
 
+class PublicationAttemptResponse(BaseModel):
+    id: UUID
+    publication_id: UUID
+    attempt_number: int
+    status: str
+    provider: str
+    request_id: str | None
+    error_code: str | None
+    error_message: str | None
+    external_publication_id: str | None
+    created_at: datetime
+
+    @classmethod
+    def from_domain(cls, attempt: PublicationAttempt) -> PublicationAttemptResponse:
+        return cls(
+            id=attempt.id,
+            publication_id=attempt.publication_id,
+            attempt_number=attempt.attempt_number,
+            status=attempt.status.value,
+            provider=attempt.provider,
+            request_id=attempt.request_id,
+            error_code=attempt.error_code,
+            error_message=attempt.error_message,
+            external_publication_id=attempt.external_publication_id,
+            created_at=attempt.created_at,
+        )
+
+
+class PublicationDetailResponse(PublicationResponse):
+    attempts: list[PublicationAttemptResponse]
+
+
 @router.post("/workspaces", status_code=status.HTTP_201_CREATED)
 async def create_workspace(
     request: CreateWorkspaceRequest,
@@ -629,6 +663,22 @@ async def list_publications(
     publications = await ListPublications(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
     return PublicationListResponse(
         items=[PublicationResponse.from_domain(publication) for publication in publications]
+    )
+
+
+@router.get(
+    "/publications/{publication_id}",
+    response_model=PublicationDetailResponse,
+    summary="Get publication details and attempt history",
+)
+async def get_publication(
+    publication_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationDetailResponse:
+    detail = await GetPublicationDetail(SqlAlchemyUnitOfWork).execute(actor, publication_id)
+    return PublicationDetailResponse(
+        **PublicationResponse.from_domain(detail.publication).model_dump(),
+        attempts=[PublicationAttemptResponse.from_domain(attempt) for attempt in detail.attempts],
     )
 
 

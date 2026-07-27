@@ -67,6 +67,23 @@ const publicationListSchema = z.object({
   items: z.array(publicationSchema),
 });
 
+const publicationAttemptSchema = z.object({
+  id: z.string().uuid(),
+  publication_id: z.string().uuid(),
+  attempt_number: z.number().int().positive(),
+  status: z.enum(["started", "succeeded", "failed_retryable", "failed_permanent"]),
+  provider: z.string(),
+  request_id: z.string().nullable(),
+  error_code: z.string().nullable(),
+  error_message: z.string().nullable(),
+  external_publication_id: z.string().nullable(),
+  created_at: z.string(),
+});
+
+const publicationDetailSchema = publicationSchema.extend({
+  attempts: z.array(publicationAttemptSchema),
+});
+
 const connectionSchema = z.object({
   id: z.string().uuid(),
   workspace_id: z.string().uuid(),
@@ -103,6 +120,8 @@ const mediaAssetSchema = z.object({
 
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type Publication = z.infer<typeof publicationSchema>;
+export type PublicationAttempt = z.infer<typeof publicationAttemptSchema>;
+export type PublicationDetail = z.infer<typeof publicationDetailSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
@@ -160,6 +179,20 @@ export async function listPublications(workspaceId: string): Promise<Publication
     return publicationListSchema.parse(await response.json()).items;
   } catch {
     return [];
+  }
+}
+
+export async function getPublication(publicationId: string): Promise<PublicationDetail | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/publications/${publicationId}`, {
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return publicationDetailSchema.parse(await response.json());
+  } catch {
+    return null;
   }
 }
 
