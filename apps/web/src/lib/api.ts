@@ -84,6 +84,29 @@ const publicationDetailSchema = publicationSchema.extend({
   attempts: z.array(publicationAttemptSchema),
 });
 
+const brandProfileSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  name: z.string(),
+  voice: z.string(),
+  audience: z.string(),
+});
+
+const brandProfileListSchema = z.object({
+  items: z.array(brandProfileSchema),
+});
+
+const campaignSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  brand_profile_id: z.string().uuid(),
+  name: z.string(),
+});
+
+const campaignListSchema = z.object({
+  items: z.array(campaignSchema),
+});
+
 const connectionSchema = z.object({
   id: z.string().uuid(),
   workspace_id: z.string().uuid(),
@@ -122,6 +145,8 @@ export type Workspace = z.infer<typeof workspaceSchema>;
 export type Publication = z.infer<typeof publicationSchema>;
 export type PublicationAttempt = z.infer<typeof publicationAttemptSchema>;
 export type PublicationDetail = z.infer<typeof publicationDetailSchema>;
+export type BrandProfile = z.infer<typeof brandProfileSchema>;
+export type Campaign = z.infer<typeof campaignSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
@@ -223,6 +248,34 @@ export async function cancelPublication(publicationId: string): Promise<Publicat
     return publicationSchema.parse(await response.json());
   } catch {
     return null;
+  }
+}
+
+export async function listBrandProfiles(workspaceId: string): Promise<BrandProfile[]> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/brand-profiles`, {
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    return brandProfileListSchema.parse(await response.json()).items;
+  } catch {
+    return [];
+  }
+}
+
+export async function listCampaigns(workspaceId: string): Promise<Campaign[]> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/campaigns`, {
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    return campaignListSchema.parse(await response.json()).items;
+  } catch {
+    return [];
   }
 }
 
