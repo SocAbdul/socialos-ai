@@ -27,9 +27,12 @@ Use this after a staging deployment or after changing runtime configuration.
 1. Open GitHub Actions.
 2. Select **Staging Smoke**.
 3. Click **Run workflow** on `main`.
-4. Wait for:
+4. Enter `expected_image_tag` as the 40-character commit SHA used for the
+   immutable API and web images that were published to staging.
+5. Wait for:
    - ECS API service stable.
    - ECS web service stable.
+   - API and web ECS services using the expected immutable image tag.
    - API health check passing through the load balancer.
    - Web entrypoint responding through the load balancer.
 
@@ -63,7 +66,8 @@ The workflow waits for the task to stop and fails if the API container exits wit
 1. Publish staging images.
 2. Apply Terraform/runtime changes manually from a controlled operator workstation.
 3. Run **Staging Migrations** if the API image includes database migrations.
-4. Run **Staging Smoke**.
+4. Run **Staging Smoke** with the exact commit SHA used for the API and web
+   image tags.
 5. Manually verify the product flow from the browser.
 6. Promote only after the staging result is understood.
 
