@@ -24,6 +24,7 @@ from socialos.application.social.use_cases import (
     CreatePublicationCommand,
     CreateWorkspace,
     CreateWorkspaceCommand,
+    ListContentItems,
     ListPlatformConnections,
     ListPublications,
     ListSocialAccounts,
@@ -236,6 +237,10 @@ class ContentItemResponse(BaseModel):
         return cls(
             id=item.id, workspace_id=item.workspace_id, campaign_id=item.campaign_id, body=item.body
         )
+
+
+class ContentItemListResponse(BaseModel):
+    items: list[ContentItemResponse]
 
 
 class RegisterMediaAssetRequest(BaseModel):
@@ -518,6 +523,15 @@ async def create_content_item(
         ),
     )
     return ContentItemResponse.from_domain(item)
+
+
+@router.get("/workspaces/{workspace_id}/content-items")
+async def list_content_items(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> ContentItemListResponse:
+    items = await ListContentItems(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return ContentItemListResponse(items=[ContentItemResponse.from_domain(item) for item in items])
 
 
 @router.post(

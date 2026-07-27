@@ -384,6 +384,20 @@ class SqlAlchemyContentItemRepository(ContentItemRepository):
         model = await self._session.get(ContentItemModel, content_item_id)
         if model is None or model.workspace_id != workspace_id:
             return None
+        return self._content_item(model)
+
+    async def list_for_workspace(self, workspace_id: UUID) -> Sequence[ContentItem]:
+        models = (
+            await self._session.scalars(
+                select(ContentItemModel)
+                .where(ContentItemModel.workspace_id == workspace_id)
+                .order_by(ContentItemModel.created_at.desc())
+            )
+        ).all()
+        return [self._content_item(model) for model in models]
+
+    @staticmethod
+    def _content_item(model: ContentItemModel) -> ContentItem:
         item = object.__new__(ContentItem)
         item.id = model.id
         item.workspace_id = model.workspace_id

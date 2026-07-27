@@ -256,6 +256,17 @@ class CreateContentItem:
             return item
 
 
+class ListContentItems:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, workspace_id: UUID) -> list[ContentItem]:
+        actor.require(Permission.POSTS_READ)
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, workspace_id)
+            return list(await uow.content_items.list_for_workspace(workspace_id))
+
+
 @dataclass(frozen=True, slots=True)
 class RegisterMediaAssetCommand:
     workspace_id: UUID

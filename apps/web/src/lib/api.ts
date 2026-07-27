@@ -67,6 +67,17 @@ const publicationListSchema = z.object({
   items: z.array(publicationSchema),
 });
 
+const contentItemSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  campaign_id: z.string().uuid(),
+  body: z.string(),
+});
+
+const contentItemListSchema = z.object({
+  items: z.array(contentItemSchema),
+});
+
 const connectionSchema = z.object({
   id: z.string().uuid(),
   workspace_id: z.string().uuid(),
@@ -103,6 +114,7 @@ const mediaAssetSchema = z.object({
 
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type Publication = z.infer<typeof publicationSchema>;
+export type ContentItem = z.infer<typeof contentItemSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
@@ -158,6 +170,20 @@ export async function listPublications(workspaceId: string): Promise<Publication
     });
     if (!response.ok) return [];
     return publicationListSchema.parse(await response.json()).items;
+  } catch {
+    return [];
+  }
+}
+
+export async function listContentItems(workspaceId: string): Promise<ContentItem[]> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(`${API_URL}/workspaces/${workspaceId}/content-items`, {
+      headers,
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    return contentItemListSchema.parse(await response.json()).items;
   } catch {
     return [];
   }
