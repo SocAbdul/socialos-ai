@@ -32,6 +32,7 @@ from socialos.application.social.use_cases import (
     RegisterMediaAssetCommand,
     RequestMediaUpload,
     RequestMediaUploadCommand,
+    RetryPublication,
     SchedulePublication,
 )
 from socialos.config import get_settings
@@ -649,7 +650,24 @@ async def publish_now(
     publication_id: UUID,
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> PublicationResponse:
-    publication = await PublishPublicationNow(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
-        actor, publication_id
-    )
+    try:
+        publication = await PublishPublicationNow(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
+            actor, publication_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return PublicationResponse.from_domain(publication)
+
+
+@router.post("/publications/{publication_id}/retry")
+async def retry_publication(
+    publication_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationResponse:
+    try:
+        publication = await RetryPublication(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
+            actor, publication_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return PublicationResponse.from_domain(publication)
