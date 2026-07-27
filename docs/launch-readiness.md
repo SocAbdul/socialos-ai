@@ -28,6 +28,8 @@ traffic until every launch gate below is complete and verified in staging.
 
 ## Required launch gates
 
+- **Public beta checklist:** complete
+  `public-beta-readiness-checklist.md` and link evidence from the launch issue.
 - **Authentication:** provision production Clerk, complete the verification in
   `authentication.md`, and store secrets in AWS.
 - **Billing:** implement Stripe Checkout, subscriptions, webhooks, entitlements,
@@ -56,3 +58,7 @@ Promote an immutable image digest from staging to production only after all CI,
 staging smoke tests and the launch checklist pass. Run database migrations as a
 one-off ECS task before shifting traffic, and use a reversible deployment for
 application containers.
+
+For the first public beta, follow `runbooks/public-beta-cutover.md` and stop at
+private staging validation if production infrastructure has not been separately
+approved.
