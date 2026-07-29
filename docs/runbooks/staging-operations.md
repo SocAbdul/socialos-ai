@@ -30,7 +30,9 @@ Use this after a staging deployment or after changing runtime configuration.
 4. Wait for:
    - ECS API service stable.
    - ECS web service stable.
-   - API health check passing through the load balancer.
+   - API liveness check passing through the load balancer.
+   - API readiness check passing through the load balancer, including database
+     and Redis connectivity.
    - Web entrypoint responding through the load balancer.
 
 The smoke workflow does not mutate application data.
