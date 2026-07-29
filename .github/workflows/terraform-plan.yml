@@ -27,8 +27,8 @@ jobs:
     env:
       TF_ENVIRONMENT: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.10.5
       - name: Check required environment variables
@@ -66,7 +66,7 @@ jobs:
             done
           fi
           exit "${missing}"
-      - uses: aws-actions/configure-aws-credentials@v5
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}

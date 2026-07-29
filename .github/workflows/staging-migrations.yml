@@ -34,7 +34,7 @@ jobs:
       STAGING_SERVICE_SECURITY_GROUP_ID: ${{ vars.STAGING_SERVICE_SECURITY_GROUP_ID }}
       EXPECTED_IMAGE_TAG: ${{ inputs.expected_image_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check manual confirmation
         run: |
           if [ "${{ inputs.confirmation }}" != "run-staging-migrations" ]; then
@@ -59,7 +59,7 @@ jobs:
             missing=1
           fi
           exit "${missing}"
-      - uses: aws-actions/configure-aws-credentials@v5
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}

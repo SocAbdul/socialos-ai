@@ -31,7 +31,7 @@ jobs:
       STAGING_ALB_URL: ${{ vars.STAGING_ALB_URL }}
       EXPECTED_IMAGE_TAG: ${{ inputs.expected_image_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check required environment variables
         run: |
           missing=0
@@ -46,7 +46,7 @@ jobs:
             missing=1
           fi
           exit "${missing}"
-      - uses: aws-actions/configure-aws-credentials@v5
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
