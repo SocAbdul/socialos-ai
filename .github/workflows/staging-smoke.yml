@@ -2,6 +2,11 @@ name: Staging Smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_image_tag:
+        description: Expected immutable API and web image tag, usually the commit SHA published to staging.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,6 +19,7 @@ concurrency:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: staging
     env:
@@ -23,6 +29,7 @@ jobs:
       STAGING_API_SERVICE_NAME: ${{ vars.STAGING_API_SERVICE_NAME }}
       STAGING_WEB_SERVICE_NAME: ${{ vars.STAGING_WEB_SERVICE_NAME }}
       STAGING_ALB_URL: ${{ vars.STAGING_ALB_URL }}
+      EXPECTED_IMAGE_TAG: ${{ inputs.expected_image_tag }}
     steps:
       - uses: actions/checkout@v4
       - name: Check required environment variables
@@ -34,6 +41,10 @@ jobs:
               missing=1
             fi
           done
+          if ! grep -Eq '^[0-9a-f]{40}$' <<<"${EXPECTED_IMAGE_TAG}"; then
+            echo "::error::expected_image_tag must be the 40-character commit SHA used as the immutable staging image tag."
+            missing=1
+          fi
           exit "${missing}"
       - uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -44,7 +55,53 @@ jobs:
           aws ecs wait services-stable \
             --cluster "${STAGING_ECS_CLUSTER_NAME}" \
             --services "${STAGING_API_SERVICE_NAME}" "${STAGING_WEB_SERVICE_NAME}"
-      - name: Check API health through the load balancer
+      - name: Verify ECS services use expected image tag
+        run: |
+          verify_service_image() {
+            service_name="$1"
+            container_name="$2"
+
+            task_definition_arn="$(
+              aws ecs describe-services \
+                --cluster "${STAGING_ECS_CLUSTER_NAME}" \
+                --services "${service_name}" \
+                --query 'services[0].taskDefinition' \
+                --output text
+            )"
+
+            if [ -z "${task_definition_arn}" ] || [ "${task_definition_arn}" = "None" ]; then
+              echo "::error::Could not resolve task definition for service ${service_name}."
+              exit 1
+            fi
+
+            task_definition="$(
+              aws ecs describe-task-definition \
+                --task-definition "${task_definition_arn}" \
+                --query 'taskDefinition' \
+                --output json
+            )"
+            image="$(jq -r --arg name "${container_name}" '.containerDefinitions[] | select(.name == $name) | .image // empty' <<<"${task_definition}")"
+
+            if [ -z "${image}" ]; then
+              echo "::error::Could not find container ${container_name} in task definition ${task_definition_arn}."
+              exit 1
+            fi
+
+            case "${image}" in
+              *":${EXPECTED_IMAGE_TAG}")
+                echo "Verified ${service_name}/${container_name} image tag ${EXPECTED_IMAGE_TAG}."
+                ;;
+              *)
+                echo "::error::${service_name}/${container_name} image does not match expected tag ${EXPECTED_IMAGE_TAG}."
+                echo "Found image: ${image}"
+                exit 1
+                ;;
+            esac
+          }
+
+          verify_service_image "${STAGING_API_SERVICE_NAME}" api
+          verify_service_image "${STAGING_WEB_SERVICE_NAME}" web
+      - name: Check API liveness through the load balancer
         run: |
           base_url="${STAGING_ALB_URL%/}"
           case "${base_url}" in
@@ -52,6 +109,14 @@ jobs:
             *) base_url="http://${base_url}" ;;
           esac
           curl --fail --silent --show-error --max-time 20 "${base_url}/health/live"
+      - name: Check API readiness through the load balancer
+        run: |
+          base_url="${STAGING_ALB_URL%/}"
+          case "${base_url}" in
+            http://*|https://*) ;;
+            *) base_url="http://${base_url}" ;;
+          esac
+          curl --fail --silent --show-error --max-time 20 "${base_url}/health/ready"
       - name: Check web entrypoint through the load balancer
         run: |
           base_url="${STAGING_ALB_URL%/}"
