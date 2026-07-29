@@ -7,6 +7,10 @@ on:
         description: Type run-staging-migrations to execute Alembic against staging.
         required: true
         type: string
+      expected_image_tag:
+        description: Expected immutable API image tag, usually the commit SHA published to staging.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -28,6 +32,7 @@ jobs:
       STAGING_API_TASK_DEFINITION_ARN: ${{ vars.STAGING_API_TASK_DEFINITION_ARN }}
       STAGING_PUBLIC_SUBNET_IDS_JSON: ${{ vars.STAGING_PUBLIC_SUBNET_IDS_JSON }}
       STAGING_SERVICE_SECURITY_GROUP_ID: ${{ vars.STAGING_SERVICE_SECURITY_GROUP_ID }}
+      EXPECTED_IMAGE_TAG: ${{ inputs.expected_image_tag }}
     steps:
       - uses: actions/checkout@v4
       - name: Check manual confirmation
@@ -49,11 +54,40 @@ jobs:
             echo "::error::STAGING_PUBLIC_SUBNET_IDS_JSON must be a JSON array of subnet IDs."
             missing=1
           fi
+          if ! grep -Eq '^[0-9a-f]{40}$' <<<"${EXPECTED_IMAGE_TAG}"; then
+            echo "::error::expected_image_tag must be the 40-character commit SHA used as the immutable staging image tag."
+            missing=1
+          fi
           exit "${missing}"
       - uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - name: Verify API task definition image tag
+        run: |
+          task_definition="$(
+            aws ecs describe-task-definition \
+              --task-definition "${STAGING_API_TASK_DEFINITION_ARN}" \
+              --query 'taskDefinition' \
+              --output json
+          )"
+          api_image="$(jq -r '.containerDefinitions[] | select(.name == "api") | .image // empty' <<<"${task_definition}")"
+
+          if [ -z "${api_image}" ]; then
+            echo "::error::Could not find an api container image in the staging API task definition."
+            exit 1
+          fi
+
+          case "${api_image}" in
+            *":${EXPECTED_IMAGE_TAG}") ;;
+            *)
+              echo "::error::Staging API task definition image does not match expected tag ${EXPECTED_IMAGE_TAG}."
+              echo "Found API image: ${api_image}"
+              exit 1
+              ;;
+          esac
+
+          echo "Verified staging API image tag ${EXPECTED_IMAGE_TAG}."
       - name: Run Alembic migrations as a one-off ECS task
         run: |
           network_configuration="$(jq -cn \

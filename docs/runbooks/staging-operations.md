@@ -52,19 +52,25 @@ Use this after deploying an API image that includes new Alembic revisions.
    run-staging-migrations
    ```
 
+7. Enter `expected_image_tag` as the 40-character commit SHA used for the
+   immutable API image that was published to staging.
+
 The workflow starts a one-off ECS Fargate task from the API task definition and overrides the command to:
 
 ```bash
 alembic upgrade head
 ```
 
-The workflow waits for the task to stop and fails if the API container exits with a non-zero code.
+Before starting the task, the workflow verifies that the configured API task
+definition uses the expected immutable image tag. It then waits for the task to
+stop and fails if the API container exits with a non-zero code.
 
 ## Recommended order for staging deploy validation
 
 1. Publish staging images.
 2. Apply Terraform/runtime changes manually from a controlled operator workstation.
-3. Run **Staging Migrations** if the API image includes database migrations.
+3. Run **Staging Migrations** with the exact API image commit SHA if the API
+   image includes database migrations.
 4. Run **Staging Smoke**.
 5. Manually verify the product flow from the browser.
 6. Promote only after the staging result is understood.
