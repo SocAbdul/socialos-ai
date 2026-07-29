@@ -30,7 +30,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.revision.outputs.image_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.DEPLOY_SHA }}
       - name: Record verified revision
@@ -45,7 +45,7 @@ jobs:
     environment:
       name: staging
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.build-images.outputs.image_tag }}
       - name: Deployment contract
@@ -62,7 +62,7 @@ jobs:
     environment:
       name: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.build-images.outputs.image_tag }}
       - name: Deployment contract

@@ -24,7 +24,7 @@ jobs:
       STAGING_WEB_SERVICE_NAME: ${{ vars.STAGING_WEB_SERVICE_NAME }}
       STAGING_ALB_URL: ${{ vars.STAGING_ALB_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check required environment variables
         run: |
           missing=0

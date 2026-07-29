@@ -36,7 +36,7 @@ jobs:
       web_image: ${{ steps.publish-web.outputs.image_ref }}
       image_tag: ${{ steps.revision.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.git_ref }}
 
