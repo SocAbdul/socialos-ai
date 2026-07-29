@@ -41,6 +41,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups --frozen
+      - run: uv export --frozen --no-dev --no-hashes --no-emit-project --format requirements.txt --output-file /tmp/socialos-api-requirements.txt
+      - run: uvx pip-audit --strict --progress-spinner off -r /tmp/socialos-api-requirements.txt
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src tests
@@ -78,6 +80,28 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.10.5
+      - name: Validate staging tfvars generator
+        working-directory: .
+        env:
+          AWS_REGION: eu-west-1
+          S3_MEDIA_BUCKET: socialos-ci-media-bucket
+          STAGING_WEB_ORIGIN: https://staging.socialos.ai/
+          MONTHLY_BUDGET_LIMIT_USD: "25"
+          BUDGET_ALERT_EMAIL: alerts@example.com
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CLERK_JWKS_URL: https://example.clerk.accounts.dev/.well-known/jwks.json
+          CLERK_ISSUER: https://example.clerk.accounts.dev
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_example
+          TOKEN_ENCRYPTION_KEY_SECRET_ARN: arn:aws:ssm:eu-west-1:123456789012:parameter/socialos/staging/TOKEN_ENCRYPTION_KEY
+          CLERK_SECRET_KEY_SECRET_ARN: arn:aws:ssm:eu-west-1:123456789012:parameter/socialos/staging/CLERK_SECRET_KEY
+          ENABLE_STAGING_RUNTIME: "true"
+          STAGING_API_IMAGE: 123456789012.dkr.ecr.eu-west-1.amazonaws.com/socialos-staging/api:ci
+          STAGING_WEB_IMAGE: 123456789012.dkr.ecr.eu-west-1.amazonaws.com/socialos-staging/web:ci
+          STAGING_DESIRED_COUNT: "1"
+          STAGING_SECRET_KMS_KEY_ARNS_HCL: "[]"
+        run: |
+          python .github/scripts/write_staging_tfvars.py "${RUNNER_TEMP}/socialos-staging.auto.tfvars"
+          terraform fmt -check "${RUNNER_TEMP}/socialos-staging.auto.tfvars"
       - run: terraform fmt -check -recursive
       - name: Validate dev Terraform
         run: |

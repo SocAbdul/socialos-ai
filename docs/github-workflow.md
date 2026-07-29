@@ -10,9 +10,9 @@
 
 Every pull request runs:
 
-- Backend lint, format check, typecheck, migrations and tests.
-- Frontend lint, typecheck, unit tests, build and Playwright demo flow.
-- Terraform format and validation for infrastructure environments.
+- Backend dependency audit, lint, format check, typecheck, migrations and tests.
+- Frontend dependency audit, lint, typecheck, unit tests, build and Playwright demo flow.
+- Terraform format, staging tfvars generation and validation for infrastructure environments.
 - Production Docker image builds.
 
 ## CD
@@ -74,12 +74,14 @@ the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
 - Enable Dependabot alerts and security updates.
 - Use labels:
   - `bug`
-  - `feature`
+  - `enhancement`
   - `security`
   - `meta`
   - `frontend`
   - `backend`
   - `infra`
+  - `quality`
+  - `release`
   - `triage`
 
 ## Dependency Updates
