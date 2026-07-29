@@ -41,7 +41,8 @@ traffic until every launch gate below is complete and verified in staging.
   paging, dead-letter queues, retry policies and restore-tested backups.
 - **Security:** complete threat modeling, dependency and container scanning,
   secret rotation, encryption review, rate limiting and an external penetration
-  test.
+  test. Before public traffic, verify the contacts in
+  `runbooks/security-contact.md` and keep `/.well-known/security.txt` accurate.
 - **Product operations:** add transactional email, support workflows, account
   deletion/export, audit logs and an incident response runbook.
 - **Compliance:** publish Terms, Privacy and Cookie policies and complete GDPR
