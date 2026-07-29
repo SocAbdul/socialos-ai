@@ -84,6 +84,13 @@ the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
   - `release`
   - `triage`
 
+## Dependency Updates
+
+Dependabot runs weekly for the web app, API and GitHub Actions. Minor and patch
+updates are grouped by ecosystem and dependency type to keep dependency
+maintenance reviewable. Major updates remain separate so breaking changes can be
+tested and rolled out intentionally.
+
 ## Release Process
 
 1. Merge a tested PR to `main`.
