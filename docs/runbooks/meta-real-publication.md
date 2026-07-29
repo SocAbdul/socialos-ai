@@ -9,6 +9,9 @@ This runbook must be completed before marking Meta as `VERIFIED_IN_DEVELOPMENT`,
 1. Create or open the Meta developer app for SocialOS AI.
 2. Configure Facebook Login for Business.
 3. Set the OAuth redirect URI exactly to `META_REDIRECT_URI`.
+   For local development this is the frontend callback route, not the backend
+   API callback. The browser lands on `/integrations/meta/callback`, then the
+   authenticated frontend posts the `code` and `state` to the backend.
 4. Add development/test users who can manage Kinetic Mobiles assets.
 5. Confirm Kinetic Mobiles has a Facebook Page.
 6. Confirm Kinetic Mobiles has an Instagram Business or Creator account connected to that Page.
@@ -21,7 +24,7 @@ Set these variables outside chat, in `.env` or deployment secrets:
 TOKEN_ENCRYPTION_KEY=long-random-secret
 META_APP_ID=...
 META_APP_SECRET=...
-META_REDIRECT_URI=http://localhost:8000/api/v1/platform-connections/meta/callback
+META_REDIRECT_URI=http://localhost:3000/integrations/meta/callback
 META_GRAPH_API_VERSION=v25.0
 MEDIA_STORAGE_PROVIDER=s3
 S3_MEDIA_BUCKET=...

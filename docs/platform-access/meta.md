@@ -20,7 +20,11 @@ Initial publishing slice requests:
 - `instagram_basic`
 - `instagram_content_publish`
 
-The backend exchanges the OAuth code for a user token, exchanges that for a longer-lived token, reads manageable Pages, then stores Page access tokens encrypted per `PlatformConnection`.
+Meta redirects the browser to the configured frontend callback route. The
+authenticated frontend posts the returned OAuth `code` and `state` to the
+backend, which exchanges the code for a user token, exchanges that for a
+longer-lived token, reads manageable Pages, then stores Page access tokens
+encrypted per `PlatformConnection`.
 
 ## Review Process
 
