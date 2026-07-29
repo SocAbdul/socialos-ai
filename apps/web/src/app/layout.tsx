@@ -10,6 +10,14 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 export const metadata: Metadata = {
   title: "SocialOS AI",
   description: "The AI operating system for multi-platform marketing.",
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+    },
+  },
 };
 
 export default function RootLayout({
@@ -23,4 +31,3 @@ export default function RootLayout({
     </html>
   );
 }
-

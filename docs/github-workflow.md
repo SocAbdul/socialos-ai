@@ -10,9 +10,9 @@
 
 Every pull request runs:
 
-- Backend lint, format check, typecheck, migrations and tests.
-- Frontend lint, typecheck, unit tests, build and Playwright demo flow.
-- Terraform format and validation for infrastructure environments.
+- Backend dependency audit, lint, format check, typecheck, migrations and tests.
+- Frontend dependency audit, lint, typecheck, unit tests, build and Playwright demo flow.
+- Terraform format, staging tfvars generation and validation for infrastructure environments.
 - Production Docker image builds.
 
 ## CD
@@ -55,6 +55,9 @@ the image publication workflow. Do not promote `latest` or locally built images.
 Use them after the runtime exists to run Alembic as a one-off ECS task and verify
 the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
 
+If staging degrades after a deployment, follow
+`docs/runbooks/staging-rollback.md` before promoting or retrying production.
+
 ## Recommended Repository Settings
 
 - Require pull requests before merging to `main`.
@@ -74,22 +77,36 @@ the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
 - Enable Dependabot alerts and security updates.
 - Use labels:
   - `bug`
-  - `feature`
+  - `enhancement`
   - `security`
   - `meta`
   - `frontend`
   - `backend`
   - `infra`
+  - `quality`
+  - `release`
   - `triage`
+
+## Dependency Updates
+
+Dependabot runs weekly for the web app, API and GitHub Actions. Minor and patch
+updates are grouped by ecosystem and dependency type to keep dependency
+maintenance reviewable. Major updates remain separate so breaking changes can be
+tested and rolled out intentionally.
 
 ## Release Process
 
 1. Merge a tested PR to `main`.
 2. Let CI and staging deployment complete.
 3. Validate staging manually.
-4. Approve production environment deployment.
-5. Create a GitHub Release with:
+4. Complete `docs/public-beta-readiness-checklist.md`.
+5. Follow `docs/runbooks/public-beta-cutover.md`.
+6. Approve production environment deployment only after explicit founder sign-off.
+7. Create a GitHub Release with:
    - user-facing changes
    - migrations
    - rollback notes
    - known risks
+
+If a release fails staging validation, stop the release and follow the staging
+rollback runbook before opening a follow-up fix PR.
