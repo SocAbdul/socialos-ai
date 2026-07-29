@@ -17,16 +17,24 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { PlatformConnection, Publication, SocialPost, Workspace } from "@/lib/api";
+import type {
+  PlatformConnection,
+  Publication,
+  PublicationDetail,
+  SocialPost,
+  Workspace,
+} from "@/lib/api";
 
 export function Dashboard({
   connections,
   posts,
+  publicationDetail,
   publications,
   workspace,
 }: {
   connections: PlatformConnection[];
   posts: SocialPost[];
+  publicationDetail: PublicationDetail | null;
   publications: Publication[];
   workspace: Workspace | null;
 }) {
@@ -221,6 +229,10 @@ export function Dashboard({
             </div>
           </div>
         </section>
+
+        <section className="mt-6">
+          <PublicationDiagnostics detail={publicationDetail} />
+        </section>
       </div>
     </main>
   );
@@ -350,6 +362,111 @@ function PublicationRow({ publication }: { publication: Publication }) {
         <button aria-label="Publication actions"><MoreHorizontal className="size-4 text-zinc-400" /></button>
       )}
     </div>
+  );
+}
+
+function PublicationDiagnostics({ detail }: { detail: PublicationDetail | null }) {
+  if (!detail) {
+    return (
+      <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-5 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-950">Publication diagnostics</h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              Create or publish a post to see delivery attempts, provider errors, and external URLs here.
+            </p>
+          </div>
+          <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-500">
+            Waiting for data
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const latestAttempt = detail.attempts[0] ?? null;
+  const outcome =
+    detail.external_url ??
+    detail.last_error ??
+    latestAttempt?.error_message ??
+    "No provider response recorded yet.";
+
+  return (
+    <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-zinc-950">Publication diagnostics</h3>
+            <StatusPill status={detail.status} />
+          </div>
+          <p className="mt-2 max-w-3xl truncate text-sm text-zinc-600">{detail.caption}</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {detail.platform} / {detail.external_publication_id ?? "No external id yet"}
+          </p>
+        </div>
+        {detail.external_url ? (
+          <a
+            className="inline-flex items-center gap-2 text-sm font-semibold text-violet-600 hover:text-violet-500"
+            href={detail.external_url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            Open published post <ArrowUpRight className="size-4" />
+          </a>
+        ) : null}
+      </div>
+
+      <div className="mt-5 rounded-xl bg-zinc-50 p-4">
+        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Latest outcome</p>
+        <p className="mt-2 text-sm text-zinc-700">{outcome}</p>
+      </div>
+
+      <div className="mt-5">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+            Attempt history
+          </h4>
+          <span className="text-xs text-zinc-400">{detail.attempts.length} attempts</span>
+        </div>
+        {detail.attempts.length > 0 ? (
+          <div className="mt-3 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
+            {detail.attempts.slice(0, 5).map((attempt) => (
+              <div key={attempt.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[120px_1fr_auto] sm:items-center">
+                <span className="text-xs font-semibold text-zinc-500">
+                  Attempt {attempt.attempt_number}
+                </span>
+                <span className="truncate text-sm text-zinc-700">
+                  {attempt.error_message ?? attempt.external_publication_id ?? attempt.request_id ?? attempt.provider}
+                </span>
+                <StatusPill status={attempt.status} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500">
+            No attempts have been recorded yet. Scheduled or queued publications will appear here after the worker runs.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const tone =
+    status === "published" || status === "succeeded"
+      ? "bg-emerald-50 text-emerald-700"
+      : status.includes("failed")
+        ? "bg-red-50 text-red-700"
+        : status === "scheduled" || status === "queued" || status === "started"
+          ? "bg-blue-50 text-blue-700"
+          : status === "uncertain"
+            ? "bg-amber-50 text-amber-700"
+            : "bg-zinc-100 text-zinc-600";
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${tone}`}>
+      {status.replaceAll("_", " ")}
+    </span>
   );
 }
 

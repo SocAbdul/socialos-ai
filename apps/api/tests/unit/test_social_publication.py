@@ -14,6 +14,7 @@ from socialos.application.social.use_cases import (
 from socialos.domain.social import (
     AttemptStatus,
     MediaAsset,
+    MediaType,
     Platform,
     PlatformConnection,
     Publication,
@@ -181,6 +182,85 @@ async def test_non_retryable_provider_error_marks_publication_permanent() -> Non
     ]
     assert uow.attempts[-1].provider == "meta"
     assert uow.attempts[-1].error_code == "190"
+
+
+@pytest.mark.asyncio
+async def test_missing_media_asset_fails_permanently_without_text_fallback() -> None:
+    connection, account, publication = make_ready_facebook_publication()
+    publication.media_asset_id = uuid4()
+    uow = InMemoryUow(publication=publication, connection=connection, account=account)
+    provider = FakeProvider()
+
+    result = await PublishQueuedPublication(
+        lambda: cast(SocialUnitOfWork, uow),
+        {"meta": cast(SocialProvider, provider)},
+    ).execute(publication.id)
+
+    assert result is not None
+    assert result.status == PublicationStatus.FAILED_PERMANENT
+    assert result.last_error == "Media asset not found"
+    assert result.lease_expires_at is None
+    assert result.execution_key is None
+    assert provider.publish_calls == 0
+    assert [attempt.status for attempt in uow.attempts] == [
+        AttemptStatus.STARTED,
+        AttemptStatus.FAILED_PERMANENT,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_missing_social_account_records_permanent_attempt() -> None:
+    connection, _account, publication = make_ready_facebook_publication()
+    uow = InMemoryUow(publication=publication, connection=connection, account=None)
+    provider = FakeProvider()
+
+    result = await PublishQueuedPublication(
+        lambda: cast(SocialUnitOfWork, uow),
+        {"meta": cast(SocialProvider, provider)},
+    ).execute(publication.id)
+
+    assert result is not None
+    assert result.status == PublicationStatus.FAILED_PERMANENT
+    assert result.last_error == "Social account not found"
+    assert result.lease_expires_at is None
+    assert result.execution_key is None
+    assert provider.publish_calls == 0
+    assert [attempt.status for attempt in uow.attempts] == [
+        AttemptStatus.STARTED,
+        AttemptStatus.FAILED_PERMANENT,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_existing_image_asset_uses_image_provider_path() -> None:
+    connection, account, publication = make_ready_facebook_publication()
+    media_asset = MediaAsset(
+        workspace_id=publication.workspace_id,
+        uploader_id="user_1",
+        media_type=MediaType.IMAGE,
+        storage_url="https://cdn.socialos.ai/workspaces/kinetic/image.jpg",
+        content_type="image/jpeg",
+        checksum_sha256="a" * 64,
+    )
+    publication.media_asset_id = media_asset.id
+    uow = InMemoryUow(
+        publication=publication,
+        connection=connection,
+        media_asset=media_asset,
+        account=account,
+    )
+    provider = FakeProvider()
+
+    result = await PublishQueuedPublication(
+        lambda: cast(SocialUnitOfWork, uow),
+        {"meta": cast(SocialProvider, provider)},
+    ).execute(publication.id)
+
+    assert result is not None
+    assert result.status == PublicationStatus.PUBLISHED
+    assert provider.publish_calls == 1
+    assert provider.publish_image_calls == 1
+    assert provider.publish_text_calls == 0
 
 
 @pytest.mark.asyncio
@@ -390,9 +470,23 @@ class FakeProvider:
 
     def __init__(self) -> None:
         self.publish_calls = 0
+        self.publish_text_calls = 0
+        self.publish_image_calls = 0
+        self.publish_video_calls = 0
 
     async def publish_text(self, *args: object, **kwargs: object) -> object:
         self.publish_calls += 1
+        self.publish_text_calls += 1
+        return FakeResult()
+
+    async def publish_image(self, *args: object, **kwargs: object) -> object:
+        self.publish_calls += 1
+        self.publish_image_calls += 1
+        return FakeResult()
+
+    async def publish_video(self, *args: object, **kwargs: object) -> object:
+        self.publish_calls += 1
+        self.publish_video_calls += 1
         return FakeResult()
 
 

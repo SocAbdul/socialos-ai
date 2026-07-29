@@ -55,6 +55,9 @@ the image publication workflow. Do not promote `latest` or locally built images.
 Use them after the runtime exists to run Alembic as a one-off ECS task and verify
 the API/web load balancer paths. Follow `docs/runbooks/staging-operations.md`.
 
+If staging degrades after a deployment, follow
+`docs/runbooks/staging-rollback.md` before promoting or retrying production.
+
 ## Recommended Repository Settings
 
 - Require pull requests before merging to `main`.
@@ -96,9 +99,14 @@ tested and rolled out intentionally.
 1. Merge a tested PR to `main`.
 2. Let CI and staging deployment complete.
 3. Validate staging manually.
-4. Approve production environment deployment.
-5. Create a GitHub Release with:
+4. Complete `docs/public-beta-readiness-checklist.md`.
+5. Follow `docs/runbooks/public-beta-cutover.md`.
+6. Approve production environment deployment only after explicit founder sign-off.
+7. Create a GitHub Release with:
    - user-facing changes
    - migrations
    - rollback notes
    - known risks
+
+If a release fails staging validation, stop the release and follow the staging
+rollback runbook before opening a follow-up fix PR.

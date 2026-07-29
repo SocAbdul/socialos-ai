@@ -1,5 +1,7 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 
 import structlog
 from fastapi import FastAPI, Request
@@ -15,6 +17,7 @@ from socialos.application.social.use_cases import (
 from socialos.config import get_settings
 from socialos.domain.posts.entities import DomainValidationError
 from socialos.infrastructure.database.session import engine
+from socialos.presentation.api.health import check_database, check_redis
 from socialos.presentation.api.posts import router as posts_router
 from socialos.presentation.api.social import router as social_router
 
@@ -101,6 +104,26 @@ async def connection_authorization_handler(
 @app.get("/health/live", tags=["health"])
 async def liveness() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["health"])
+async def readiness() -> JSONResponse:
+    database, redis = await asyncio.gather(check_database(), check_redis())
+    dependencies = {
+        "database": asdict(database),
+        "redis": asdict(redis),
+    }
+    is_ready = all(dependency["status"] == "ok" for dependency in dependencies.values())
+    status_code = 200 if is_ready else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ready" if is_ready else "not_ready",
+            "environment": settings.environment,
+            "version": app.version,
+            "dependencies": dependencies,
+        },
+    )
 
 
 app.include_router(posts_router, prefix="/api/v1")

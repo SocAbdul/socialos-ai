@@ -44,6 +44,10 @@ class ConnectionAuthorizationError(PermissionError):
     """Raised when a platform connection cannot be authorized or validated."""
 
 
+class _PermanentPublicationError(RuntimeError):
+    retryable = False
+
+
 @dataclass(frozen=True, slots=True)
 class CreateWorkspaceCommand:
     name: str
@@ -106,6 +110,17 @@ class CreateBrandProfile:
             await uow.brand_profiles.add(brand)
             await uow.commit()
             return brand
+
+
+class ListBrandProfiles:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, workspace_id: UUID) -> list[BrandProfile]:
+        actor.require(Permission.POSTS_READ)
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, workspace_id)
+            return list(await uow.brand_profiles.list_for_workspace(workspace_id))
 
 
 class ListPlatformConnections:
@@ -230,6 +245,17 @@ class CreateCampaign:
             return campaign
 
 
+class ListCampaigns:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, workspace_id: UUID) -> list[Campaign]:
+        actor.require(Permission.POSTS_READ)
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, workspace_id)
+            return list(await uow.campaigns.list_for_workspace(workspace_id))
+
+
 @dataclass(frozen=True, slots=True)
 class CreateContentItemCommand:
     workspace_id: UUID
@@ -254,6 +280,17 @@ class CreateContentItem:
             await uow.content_items.add(item)
             await uow.commit()
             return item
+
+
+class ListContentItems:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, workspace_id: UUID) -> list[ContentItem]:
+        actor.require(Permission.POSTS_READ)
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, workspace_id)
+            return list(await uow.content_items.list_for_workspace(workspace_id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,6 +321,17 @@ class RegisterMediaAsset:
             await uow.media_assets.add(asset)
             await uow.commit()
             return asset
+
+
+class ListMediaAssets:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, workspace_id: UUID) -> list[MediaAsset]:
+        actor.require(Permission.POSTS_READ)
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, workspace_id)
+            return list(await uow.media_assets.list_for_workspace(workspace_id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,6 +466,29 @@ class ListPublications:
             return list(await uow.publications.list_for_workspace(workspace_id))
 
 
+@dataclass(frozen=True, slots=True)
+class PublicationDetail:
+    publication: Publication
+    attempts: list[PublicationAttempt]
+
+
+class GetPublicationDetail:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, publication_id: UUID) -> PublicationDetail:
+        actor.require(Permission.POSTS_READ)
+        async with self._uow_factory() as uow:
+            workspace = await uow.workspaces.get_by_external_organization_id(actor.organization_id)
+            if workspace is None:
+                raise ApplicationNotFoundError("Workspace not found")
+            publication = await uow.publications.get(publication_id, workspace.id)
+            if publication is None:
+                raise ApplicationNotFoundError("Publication not found")
+            attempts = await uow.publication_attempts.list_for_publication(publication.id)
+            return PublicationDetail(publication=publication, attempts=list(attempts))
+
+
 class SchedulePublication:
     def __init__(
         self,
@@ -461,8 +532,17 @@ class PublishPublicationNow:
             publication = await uow.publications.get(publication_id, workspace.id)
             if publication is None:
                 raise ApplicationNotFoundError("Publication not found")
-            if publication.status in {PublicationStatus.PUBLISHED, PublicationStatus.PUBLISHING}:
+            if publication.status in {
+                PublicationStatus.PUBLISHED,
+                PublicationStatus.PUBLISHING,
+                PublicationStatus.QUEUED,
+            }:
                 return publication
+            if publication.status in {
+                PublicationStatus.FAILED_PERMANENT,
+                PublicationStatus.CANCELLED,
+            }:
+                raise ValueError("Publication cannot be published from its current state")
             publication.status = PublicationStatus.QUEUED
             publication.next_attempt_at = datetime.now(UTC)
             publication.updated_at = datetime.now(UTC)
@@ -470,6 +550,72 @@ class PublishPublicationNow:
             await uow.commit()
         await self._job_queue.enqueue_publication(publication.id)
         return publication
+
+
+class RetryPublication:
+    def __init__(
+        self,
+        uow_factory: Callable[[], SocialUnitOfWork],
+        job_queue: JobQueue,
+    ) -> None:
+        self._uow_factory = uow_factory
+        self._job_queue = job_queue
+
+    async def execute(self, actor: Actor, publication_id: UUID) -> Publication:
+        actor.require(Permission.POSTS_WRITE)
+        async with self._uow_factory() as uow:
+            workspace = await uow.workspaces.get_by_external_organization_id(actor.organization_id)
+            if workspace is None:
+                raise ApplicationNotFoundError("Workspace not found")
+            publication = await uow.publications.get(publication_id, workspace.id)
+            if publication is None:
+                raise ApplicationNotFoundError("Publication not found")
+            if publication.status not in {
+                PublicationStatus.FAILED_RETRYABLE,
+                PublicationStatus.UNCERTAIN,
+            }:
+                raise ValueError("Only retryable or uncertain publications can be retried")
+            publication.status = PublicationStatus.QUEUED
+            publication.last_error = None
+            publication.next_attempt_at = datetime.now(UTC)
+            publication.updated_at = datetime.now(UTC)
+            await uow.publications.update(publication)
+            await uow.commit()
+        await self._job_queue.enqueue_publication(publication.id)
+        return publication
+
+
+class CancelPublication:
+    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+        self._uow_factory = uow_factory
+
+    async def execute(self, actor: Actor, publication_id: UUID) -> Publication:
+        actor.require(Permission.POSTS_WRITE)
+        async with self._uow_factory() as uow:
+            workspace = await uow.workspaces.get_by_external_organization_id(actor.organization_id)
+            if workspace is None:
+                raise ApplicationNotFoundError("Workspace not found")
+            publication = await uow.publications.get(publication_id, workspace.id)
+            if publication is None:
+                raise ApplicationNotFoundError("Publication not found")
+            if publication.status == PublicationStatus.CANCELLED:
+                return publication
+            if publication.status not in {
+                PublicationStatus.DRAFT,
+                PublicationStatus.READY,
+                PublicationStatus.SCHEDULED,
+                PublicationStatus.QUEUED,
+                PublicationStatus.FAILED_RETRYABLE,
+                PublicationStatus.UNCERTAIN,
+            }:
+                raise ValueError("Publication cannot be cancelled from its current state")
+            publication.status = PublicationStatus.CANCELLED
+            publication.next_attempt_at = None
+            publication.last_error = None
+            publication.updated_at = datetime.now(UTC)
+            await uow.publications.update(publication)
+            await uow.commit()
+            return publication
 
 
 class PublishQueuedPublication:
@@ -554,21 +700,19 @@ class PublishQueuedPublication:
                 )
                 if connection is None:
                     return publication
+                provider = self._providers[connection.provider]
+                provider_name = provider.provider_name
                 account = await uow.social_accounts.get(
                     publication.social_account_id, publication.workspace_id
                 )
                 if account is None:
-                    publication.status = PublicationStatus.FAILED_PERMANENT
-                    publication.last_error = "Social account not found"
-                    await uow.publications.update(publication)
-                    await uow.commit()
-                    return publication
+                    raise _PermanentPublicationError("Social account not found")
                 if publication.media_asset_id:
                     media_asset = await uow.media_assets.get(
                         publication.media_asset_id, publication.workspace_id
                     )
-                provider = self._providers[connection.provider]
-                provider_name = provider.provider_name
+                    if media_asset is None:
+                        raise _PermanentPublicationError("Media asset not found")
                 if media_asset is None:
                     result = await provider.publish_text(
                         connection,
