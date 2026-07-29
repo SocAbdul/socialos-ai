@@ -1,8 +1,8 @@
 .PHONY: install dev test lint format compose-up compose-down migrate
 
 install:
-	cd apps/api && uv sync --all-groups
-	cd apps/web && npm install
+	cd apps/api && uv sync --all-groups --frozen
+	cd apps/web && npm ci
 
 dev:
 	docker compose up --build
@@ -13,7 +13,8 @@ test:
 
 lint:
 	cd apps/api && uv run ruff check .
-	cd apps/api && uv run mypy src
+	cd apps/api && uv run ruff format --check .
+	cd apps/api && uv run mypy src tests
 	cd apps/web && npm run lint
 	cd apps/web && npm run typecheck
 
@@ -29,4 +30,3 @@ compose-down:
 
 migrate:
 	cd apps/api && uv run alembic upgrade head
-

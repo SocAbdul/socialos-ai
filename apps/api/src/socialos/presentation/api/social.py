@@ -12,6 +12,7 @@ from socialos.application.social.use_cases import (
     AdaptContentForPlatform,
     ApplicationNotFoundError,
     BuildMetaAuthorizationUrl,
+    CancelPublication,
     CompleteMetaOAuth,
     ConnectionAuthorizationError,
     CreateBrandProfile,
@@ -24,6 +25,11 @@ from socialos.application.social.use_cases import (
     CreatePublicationCommand,
     CreateWorkspace,
     CreateWorkspaceCommand,
+    GetPublicationDetail,
+    ListBrandProfiles,
+    ListCampaigns,
+    ListContentItems,
+    ListMediaAssets,
     ListPlatformConnections,
     ListPublications,
     ListSocialAccounts,
@@ -32,6 +38,7 @@ from socialos.application.social.use_cases import (
     RegisterMediaAssetCommand,
     RequestMediaUpload,
     RequestMediaUploadCommand,
+    RetryPublication,
     SchedulePublication,
 )
 from socialos.config import get_settings
@@ -45,6 +52,7 @@ from socialos.domain.social import (
     Platform,
     PlatformConnection,
     Publication,
+    PublicationAttempt,
     SocialAccount,
     Workspace,
 )
@@ -116,6 +124,10 @@ class BrandProfileResponse(BaseModel):
             voice=brand.voice,
             audience=brand.audience,
         )
+
+
+class BrandProfileListResponse(BaseModel):
+    items: list[BrandProfileResponse]
 
 
 class AuthorizationUrlResponse(BaseModel):
@@ -218,6 +230,10 @@ class CampaignResponse(BaseModel):
         )
 
 
+class CampaignListResponse(BaseModel):
+    items: list[CampaignResponse]
+
+
 class CreateContentItemRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -236,6 +252,10 @@ class ContentItemResponse(BaseModel):
         return cls(
             id=item.id, workspace_id=item.workspace_id, campaign_id=item.campaign_id, body=item.body
         )
+
+
+class ContentItemListResponse(BaseModel):
+    items: list[ContentItemResponse]
 
 
 class RegisterMediaAssetRequest(BaseModel):
@@ -282,6 +302,10 @@ class MediaAssetResponse(BaseModel):
             storage_url=asset.storage_url,
             content_type=asset.content_type,
         )
+
+
+class MediaAssetListResponse(BaseModel):
+    items: list[MediaAssetResponse]
 
 
 class AdaptContentRequest(BaseModel):
@@ -376,6 +400,38 @@ class PublicationListResponse(BaseModel):
     items: list[PublicationResponse]
 
 
+class PublicationAttemptResponse(BaseModel):
+    id: UUID
+    publication_id: UUID
+    attempt_number: int
+    status: str
+    provider: str
+    request_id: str | None
+    error_code: str | None
+    error_message: str | None
+    external_publication_id: str | None
+    created_at: datetime
+
+    @classmethod
+    def from_domain(cls, attempt: PublicationAttempt) -> PublicationAttemptResponse:
+        return cls(
+            id=attempt.id,
+            publication_id=attempt.publication_id,
+            attempt_number=attempt.attempt_number,
+            status=attempt.status.value,
+            provider=attempt.provider,
+            request_id=attempt.request_id,
+            error_code=attempt.error_code,
+            error_message=attempt.error_message,
+            external_publication_id=attempt.external_publication_id,
+            created_at=attempt.created_at,
+        )
+
+
+class PublicationDetailResponse(PublicationResponse):
+    attempts: list[PublicationAttemptResponse]
+
+
 @router.post("/workspaces", status_code=status.HTTP_201_CREATED)
 async def create_workspace(
     request: CreateWorkspaceRequest,
@@ -406,6 +462,17 @@ async def create_brand_profile(
         ),
     )
     return BrandProfileResponse.from_domain(brand)
+
+
+@router.get("/workspaces/{workspace_id}/brand-profiles")
+async def list_brand_profiles(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> BrandProfileListResponse:
+    brands = await ListBrandProfiles(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return BrandProfileListResponse(
+        items=[BrandProfileResponse.from_domain(brand) for brand in brands]
+    )
 
 
 @router.get(
@@ -500,6 +567,17 @@ async def create_campaign(
     return CampaignResponse.from_domain(campaign)
 
 
+@router.get("/workspaces/{workspace_id}/campaigns")
+async def list_campaigns(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> CampaignListResponse:
+    campaigns = await ListCampaigns(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return CampaignListResponse(
+        items=[CampaignResponse.from_domain(campaign) for campaign in campaigns]
+    )
+
+
 @router.post(
     "/workspaces/{workspace_id}/content-items",
     status_code=status.HTTP_201_CREATED,
@@ -518,6 +596,15 @@ async def create_content_item(
         ),
     )
     return ContentItemResponse.from_domain(item)
+
+
+@router.get("/workspaces/{workspace_id}/content-items")
+async def list_content_items(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> ContentItemListResponse:
+    items = await ListContentItems(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return ContentItemListResponse(items=[ContentItemResponse.from_domain(item) for item in items])
 
 
 @router.post(
@@ -594,6 +681,15 @@ async def register_media_asset(
     return MediaAssetResponse.from_domain(asset)
 
 
+@router.get("/workspaces/{workspace_id}/media-assets")
+async def list_media_assets(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> MediaAssetListResponse:
+    assets = await ListMediaAssets(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    return MediaAssetListResponse(items=[MediaAssetResponse.from_domain(asset) for asset in assets])
+
+
 @router.post(
     "/workspaces/{workspace_id}/publications",
     status_code=status.HTTP_201_CREATED,
@@ -632,6 +728,22 @@ async def list_publications(
     )
 
 
+@router.get(
+    "/publications/{publication_id}",
+    response_model=PublicationDetailResponse,
+    summary="Get publication details and attempt history",
+)
+async def get_publication(
+    publication_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationDetailResponse:
+    detail = await GetPublicationDetail(SqlAlchemyUnitOfWork).execute(actor, publication_id)
+    return PublicationDetailResponse(
+        **PublicationResponse.from_domain(detail.publication).model_dump(),
+        attempts=[PublicationAttemptResponse.from_domain(attempt) for attempt in detail.attempts],
+    )
+
+
 @router.post("/publications/{publication_id}/schedule")
 async def schedule_publication(
     publication_id: UUID,
@@ -649,7 +761,36 @@ async def publish_now(
     publication_id: UUID,
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> PublicationResponse:
-    publication = await PublishPublicationNow(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
-        actor, publication_id
-    )
+    try:
+        publication = await PublishPublicationNow(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
+            actor, publication_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return PublicationResponse.from_domain(publication)
+
+
+@router.post("/publications/{publication_id}/retry")
+async def retry_publication(
+    publication_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationResponse:
+    try:
+        publication = await RetryPublication(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
+            actor, publication_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return PublicationResponse.from_domain(publication)
+
+
+@router.post("/publications/{publication_id}/cancel")
+async def cancel_publication(
+    publication_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> PublicationResponse:
+    try:
+        publication = await CancelPublication(SqlAlchemyUnitOfWork).execute(actor, publication_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return PublicationResponse.from_domain(publication)

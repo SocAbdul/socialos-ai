@@ -2,7 +2,13 @@
 
 ## Reporting Security Issues
 
-Do not open public issues for vulnerabilities. Report privately to the project owner until a private security advisory process is configured.
+Do not open public issues for vulnerabilities. Report privately through GitHub
+Security Advisories:
+
+https://github.com/SocAbdul/socialos-ai/security/advisories/new
+
+The public web app also exposes `/.well-known/security.txt` so security
+researchers can find the disclosure path without reading the repository.
 
 ## Secret Handling
 
