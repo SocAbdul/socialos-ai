@@ -1,7 +1,7 @@
 name: Feature request
 description: Propose a scoped product or engineering improvement.
 title: "[Feature]: "
-labels: ["feature", "triage"]
+labels: ["enhancement", "triage"]
 body:
   - type: textarea
     id: problem

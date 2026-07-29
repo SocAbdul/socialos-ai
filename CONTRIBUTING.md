@@ -15,7 +15,7 @@ Use `C:\dev\socialos-ai` on Windows to avoid OneDrive locking `node_modules`.
 ```powershell
 Copy-Item .env.example .env
 cd apps\api
-uv sync --all-groups
+uv sync --all-groups --frozen
 cd ..\web
 npm ci
 ```
@@ -27,19 +27,28 @@ Backend:
 ```powershell
 cd apps\api
 uv run ruff check .
+uv run ruff format --check .
 uv run mypy src tests
 uv run pytest
+uv run python -c "from socialos.main import app; print(app.title)"
 ```
 
 Frontend:
 
 ```powershell
 cd apps\web
+npm audit --omit=dev --audit-level=high
 npm run lint
 npm run typecheck
-npm test -- --run
+npm test
 npm run build
 npm run test:e2e
+```
+
+Repository:
+
+```powershell
+docker compose config
 ```
 
 ## Pull Request Flow
