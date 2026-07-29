@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/SocAbdul/socialos-ai/security/advisories/new
+    about: Please do not report vulnerabilities in public issues.
+  - name: Review the launch readiness checklist
+    url: https://github.com/SocAbdul/socialos-ai/blob/main/docs/launch-readiness.md
+    about: Check known pre-launch gaps before opening release-readiness issues.
