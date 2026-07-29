@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { Dashboard } from "@/components/dashboard";
 import { DemoDashboard } from "@/components/demo/demo-dashboard";
 import { Sidebar } from "@/components/sidebar";
-import { ensureWorkspace, listPlatformConnections, listPosts, listPublications } from "@/lib/api";
+import {
+  ensureWorkspace,
+  getPublication,
+  listPlatformConnections,
+  listPosts,
+  listPublications,
+} from "@/lib/api";
 
 export default async function Home() {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
@@ -23,6 +29,7 @@ export default async function Home() {
         listPublications(workspace.id),
       ])
     : [[], []];
+  const publicationDetail = publications[0] ? await getPublication(publications[0].id) : null;
 
   return (
     <>
@@ -30,6 +37,7 @@ export default async function Home() {
       <Dashboard
         connections={connections}
         posts={posts}
+        publicationDetail={publicationDetail}
         publications={publications}
         workspace={workspace}
       />
