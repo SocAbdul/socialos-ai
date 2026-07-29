@@ -41,6 +41,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups --frozen
+      - run: uv export --frozen --no-dev --no-hashes --no-emit-project --format requirements.txt --output-file /tmp/socialos-api-requirements.txt
+      - run: uvx pip-audit --strict --progress-spinner off -r /tmp/socialos-api-requirements.txt
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src tests
