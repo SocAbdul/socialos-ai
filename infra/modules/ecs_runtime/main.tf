@@ -144,7 +144,7 @@ resource "aws_lb_target_group" "api" {
   health_check {
     enabled             = true
     matcher             = "200"
-    path                = "/health/live"
+    path                = "/health/ready"
     healthy_threshold   = 2
     unhealthy_threshold = 3
     timeout             = 5

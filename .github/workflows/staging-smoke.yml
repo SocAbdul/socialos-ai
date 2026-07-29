@@ -44,7 +44,7 @@ jobs:
           aws ecs wait services-stable \
             --cluster "${STAGING_ECS_CLUSTER_NAME}" \
             --services "${STAGING_API_SERVICE_NAME}" "${STAGING_WEB_SERVICE_NAME}"
-      - name: Check API health through the load balancer
+      - name: Check API liveness through the load balancer
         run: |
           base_url="${STAGING_ALB_URL%/}"
           case "${base_url}" in
@@ -52,6 +52,14 @@ jobs:
             *) base_url="http://${base_url}" ;;
           esac
           curl --fail --silent --show-error --max-time 20 "${base_url}/health/live"
+      - name: Check API readiness through the load balancer
+        run: |
+          base_url="${STAGING_ALB_URL%/}"
+          case "${base_url}" in
+            http://*|https://*) ;;
+            *) base_url="http://${base_url}" ;;
+          esac
+          curl --fail --silent --show-error --max-time 20 "${base_url}/health/ready"
       - name: Check web entrypoint through the load balancer
         run: |
           base_url="${STAGING_ALB_URL%/}"
