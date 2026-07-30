@@ -8,6 +8,16 @@ updates:
     labels:
       - dependencies
       - frontend
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "eslint"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "lucide-react"
+        update-types:
+          - version-update:semver-major
     groups:
       web-production-minor-patch:
         dependency-type: production
@@ -46,6 +56,10 @@ updates:
     labels:
       - dependencies
       - infra
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       github-actions:
         patterns:
