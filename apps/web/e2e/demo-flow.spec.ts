@@ -22,3 +22,17 @@ test("demo user can adapt, publish, inspect and retry", async ({ page }) => {
   await page.getByRole("button", { name: "Reset demo" }).click();
   await expect(page.getByText("Demo reset to the original Kinetic Mobiles data.")).toBeVisible();
 });
+
+test("demo dashboard fits a mobile viewport without horizontal overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 1100 });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "Review the Meta publishing flow" })).toBeVisible();
+
+  const viewport = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+
+  expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth);
+});
