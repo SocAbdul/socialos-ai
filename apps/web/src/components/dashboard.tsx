@@ -16,26 +16,52 @@ import {
   Youtube,
 } from "lucide-react";
 
+import {
+  cancelAction,
+  createWalkthroughPublicationAction,
+  ensureLocalDevelopmentAccountsAction,
+  publishNowAction,
+  retryAction,
+  scheduleAction,
+} from "@/app/actions";
+import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import type {
+  BrandProfile,
+  Campaign,
+  ContentItem,
+  MediaAsset,
   PlatformConnection,
   Publication,
   PublicationDetail,
+  SocialAccount,
   SocialPost,
   Workspace,
 } from "@/lib/api";
 
 export function Dashboard({
+  brands,
+  campaigns,
   connections,
+  contentItems,
+  mediaAssets,
+  notice,
   posts,
   publicationDetail,
   publications,
+  socialAccounts,
   workspace,
 }: {
+  brands: BrandProfile[];
+  campaigns: Campaign[];
   connections: PlatformConnection[];
+  contentItems: ContentItem[];
+  mediaAssets: MediaAsset[];
+  notice: string | null;
   posts: SocialPost[];
   publicationDetail: PublicationDetail | null;
   publications: Publication[];
+  socialAccounts: SocialAccount[];
   workspace: Workspace | null;
 }) {
   const recentPosts = posts.slice(0, 3);
@@ -44,7 +70,7 @@ export function Dashboard({
   const scheduledCount = publications.filter((item) => item.status === "scheduled").length;
 
   return (
-    <main className="min-h-screen bg-[#f8f8fa] lg:pl-64">
+    <main className="min-h-screen overflow-x-hidden bg-[#f8f8fa] lg:pl-64">
       <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-zinc-200/80 bg-white/85 px-5 backdrop-blur-xl sm:px-8">
         <div className="flex items-center gap-3">
           <button className="lg:hidden" aria-label="Open navigation">
@@ -61,14 +87,22 @@ export function Dashboard({
           <Button variant="ghost" size="icon" aria-label="Notifications">
             <Bell className="size-4.5" />
           </Button>
-          <Button>
-            <Plus className="size-4" />
-            Create post
+          <Button asChild>
+            <a href="#create-post">
+              <Plus className="size-4" />
+              Create post
+            </a>
           </Button>
         </div>
       </header>
 
       <div className="mx-auto max-w-[1440px] px-5 py-7 sm:px-8 sm:py-9">
+        {notice ? (
+          <div className="mb-6 rounded-2xl border border-violet-100 bg-violet-50 px-5 py-4 text-sm font-medium text-violet-800">
+            {notice}
+          </div>
+        ) : null}
+
         <section className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
             <p className="mb-1 text-sm font-medium text-violet-600">Good evening, Abdullah</p>
@@ -117,7 +151,7 @@ export function Dashboard({
         </section>
 
         <section className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_1fr]">
-          <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,.02)]">
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,.02)]">
             <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 sm:px-6">
               <div>
                 <h3 className="text-sm font-semibold text-zinc-950">Content performance</h3>
@@ -140,7 +174,7 @@ export function Dashboard({
             </div>
           </div>
 
-          <div className="rounded-2xl bg-zinc-950 p-6 text-white shadow-xl shadow-zinc-950/10">
+          <div className="min-w-0 rounded-2xl bg-zinc-950 p-6 text-white shadow-xl shadow-zinc-950/10">
             <div className="flex items-start justify-between">
               <div className="grid size-10 place-items-center rounded-xl bg-violet-500/20 text-violet-300">
                 <Sparkles className="size-5" />
@@ -163,7 +197,7 @@ export function Dashboard({
         </section>
 
         <section className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_1fr]">
-          <div className="rounded-2xl border border-zinc-200/80 bg-white">
+          <div className="min-w-0 rounded-2xl border border-zinc-200/80 bg-white">
             <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 sm:px-6">
               <h3 className="text-sm font-semibold text-zinc-950">Recent content</h3>
               <button className="text-xs font-semibold text-violet-600 hover:text-violet-500">
@@ -198,7 +232,7 @@ export function Dashboard({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6">
+          <div className="min-w-0 rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-zinc-950">Connected channels</h3>
               <button className="text-xs font-semibold text-violet-600">Manage</button>
@@ -230,11 +264,283 @@ export function Dashboard({
           </div>
         </section>
 
+        <section id="create-post" className="mt-6">
+          <LocalPublishingWalkthrough
+            brands={brands}
+            campaigns={campaigns}
+            contentItems={contentItems}
+            connections={connections}
+            mediaAssets={mediaAssets}
+            socialAccounts={socialAccounts}
+            workspace={workspace}
+          />
+        </section>
+
         <section className="mt-6">
           <PublicationDiagnostics detail={publicationDetail} />
         </section>
       </div>
     </main>
+  );
+}
+
+function LocalPublishingWalkthrough({
+  brands,
+  campaigns,
+  contentItems,
+  connections,
+  mediaAssets,
+  socialAccounts,
+  workspace,
+}: {
+  brands: BrandProfile[];
+  campaigns: Campaign[];
+  contentItems: ContentItem[];
+  connections: PlatformConnection[];
+  mediaAssets: MediaAsset[];
+  socialAccounts: SocialAccount[];
+  workspace: Workspace | null;
+}) {
+  const localAccounts = socialAccounts.filter((account) =>
+    account.external_account_id.startsWith("local-dev-"),
+  );
+  const localConnections = connections.filter((connection) => connection.provider === "local-dev");
+  const defaultBody =
+    "Kinetic Mobiles now offers same-day screen repairs for busy professionals in Valencia. Book online, drop off your phone, and get back to work with a quality-tested display.";
+
+  if (!workspace) {
+    return (
+      <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">
+        The local workspace could not be created. Check the API health endpoint and refresh.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
+      <div className="min-w-0 rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-600">
+              Local product walkthrough
+            </p>
+            <h3 className="mt-2 text-xl font-bold tracking-tight text-zinc-950">
+              Create a real local publication
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
+              This flow writes to PostgreSQL, adapts copy with the local AI service, queues work
+              through Redis/Celery, and records publication attempts. It never calls Meta.
+            </p>
+          </div>
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+            Local simulation
+          </span>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-zinc-900">Development social accounts</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {localAccounts.length > 0
+                  ? `${localAccounts.length} local test accounts are available.`
+                  : "Create local Facebook and Instagram test accounts before publishing."}
+              </p>
+            </div>
+            <form action={ensureLocalDevelopmentAccountsAction}>
+              <input name="workspaceId" type="hidden" value={workspace.id} />
+              <SubmitButton variant="outline">
+                {localAccounts.length > 0 ? "Refresh local accounts" : "Create local accounts"}
+              </SubmitButton>
+            </form>
+          </div>
+          {localAccounts.length > 0 ? (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {localAccounts.map((account) => (
+                <div key={account.id} className="rounded-xl border border-zinc-200 bg-white p-3">
+                  <p className="text-xs font-bold text-zinc-900">{account.display_name}</p>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    {account.platform} / test only / no real publishing
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <form action={createWalkthroughPublicationAction} className="mt-6 grid gap-5">
+          <input name="workspaceId" type="hidden" value={workspace.id} />
+          <div className="grid gap-4 md:grid-cols-2">
+            <LabelledInput
+              defaultValue="Kinetic Mobiles"
+              label="Brand Profile"
+              name="brandName"
+              required
+            />
+            <LabelledInput
+              defaultValue="Same-day repair launch"
+              label="Campaign"
+              name="campaignName"
+              required
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <LabelledTextarea
+              defaultValue="Helpful, precise, practical and confident. Never gimmicky."
+              label="Brand voice"
+              name="voice"
+            />
+            <LabelledTextarea
+              defaultValue="Local professionals and families who need reliable phone repairs, accessories, and refurbished devices."
+              label="Audience"
+              name="audience"
+            />
+          </div>
+          <LabelledTextarea
+            defaultValue={defaultBody}
+            label="Original content"
+            name="contentBody"
+            required
+          />
+          <div className="grid gap-4 md:grid-cols-[.7fr_1.3fr]">
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Platform
+              <select
+                className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none ring-violet-500 transition focus:ring-2"
+                name="platform"
+                defaultValue="instagram"
+              >
+                <option value="instagram">Instagram local business</option>
+                <option value="facebook">Facebook local page</option>
+              </select>
+            </label>
+            <LabelledInput
+              defaultValue="https://media.local.socialos.invalid/kinetic-mobiles/same-day-screen-repair.jpg"
+              label="Media Asset URL"
+              name="mediaUrl"
+              required
+            />
+          </div>
+          <input name="contentType" type="hidden" value="image/jpeg" />
+          <input
+            name="checksumSha256"
+            type="hidden"
+            value="b4b9b02e6f09a9bd760f388b67351e2b1dd3bba6a63c10cf7e5f541d176ad39c"
+          />
+          <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
+            <input className="mt-1" name="simulateRetryableError" type="checkbox" />
+            <span>
+              Simulate retryable provider error. Use this to verify retry from the publication
+              detail panel.
+            </span>
+          </label>
+          <SubmitButton className="w-full sm:w-fit">
+            <Sparkles className="size-4" />
+            Adapt and create publication
+          </SubmitButton>
+        </form>
+      </div>
+
+      <div className="min-w-0 space-y-4">
+        <InventoryCard
+          label="Brand profiles"
+          value={brands.length}
+          empty="Create the first brand profile from the form."
+        />
+        <InventoryCard
+          label="Campaigns"
+          value={campaigns.length}
+          empty="Campaigns will appear after publication creation."
+        />
+        <InventoryCard
+          label="Content items"
+          value={contentItems.length}
+          empty="Content items are stored from the original text."
+        />
+        <InventoryCard
+          label="Media assets"
+          value={mediaAssets.length}
+          empty="Media is registered locally without S3."
+        />
+        <InventoryCard
+          label="Local connections"
+          value={localConnections.length}
+          empty="Create local accounts to unlock publishing."
+        />
+      </div>
+    </div>
+  );
+}
+
+function InventoryCard({
+  empty,
+  label,
+  value,
+}: {
+  empty: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200/80 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-zinc-900">{label}</p>
+        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-bold text-zinc-600">
+          {value}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-zinc-500">
+        {value > 0 ? "Saved in local PostgreSQL." : empty}
+      </p>
+    </div>
+  );
+}
+
+function LabelledInput({
+  defaultValue,
+  label,
+  name,
+  required = false,
+}: {
+  defaultValue: string;
+  label: string;
+  name: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+      {label}
+      <input
+        className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal text-zinc-800 outline-none ring-violet-500 transition focus:ring-2"
+        defaultValue={defaultValue}
+        name={name}
+        required={required}
+      />
+    </label>
+  );
+}
+
+function LabelledTextarea({
+  defaultValue,
+  label,
+  name,
+  required = false,
+}: {
+  defaultValue: string;
+  label: string;
+  name: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+      {label}
+      <textarea
+        className="min-h-28 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none ring-violet-500 transition focus:ring-2"
+        defaultValue={defaultValue}
+        name={name}
+        required={required}
+      />
+    </label>
   );
 }
 
@@ -359,7 +665,9 @@ function PublicationRow({ publication }: { publication: Publication }) {
           <ArrowUpRight className="size-4 text-zinc-400" />
         </a>
       ) : (
-        <button aria-label="Publication actions"><MoreHorizontal className="size-4 text-zinc-400" /></button>
+      <a aria-label="Open publication detail" href={`/?publication=${publication.id}#publication-detail`}>
+        <MoreHorizontal className="size-4 text-zinc-400" />
+      </a>
       )}
     </div>
   );
@@ -392,7 +700,7 @@ function PublicationDiagnostics({ detail }: { detail: PublicationDetail | null }
     "No provider response recorded yet.";
 
   return (
-    <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6">
+    <div id="publication-detail" className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -404,16 +712,7 @@ function PublicationDiagnostics({ detail }: { detail: PublicationDetail | null }
             {detail.platform} / {detail.external_publication_id ?? "No external id yet"}
           </p>
         </div>
-        {detail.external_url ? (
-          <a
-            className="inline-flex items-center gap-2 text-sm font-semibold text-violet-600 hover:text-violet-500"
-            href={detail.external_url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Open published post <ArrowUpRight className="size-4" />
-          </a>
-        ) : null}
+        <PublicationActions detail={detail} />
       </div>
 
       <div className="mt-5 rounded-xl bg-zinc-50 p-4">
@@ -452,6 +751,64 @@ function PublicationDiagnostics({ detail }: { detail: PublicationDetail | null }
   );
 }
 
+function PublicationActions({ detail }: { detail: PublicationDetail }) {
+  const canPublish = ["ready", "draft"].includes(detail.status);
+  const canCancel = [
+    "draft",
+    "ready",
+    "scheduled",
+    "queued",
+    "failed_retryable",
+    "uncertain",
+  ].includes(detail.status);
+  const canRetry = ["failed_retryable", "uncertain"].includes(detail.status);
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {detail.external_url ? (
+        <a
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-violet-600 hover:bg-violet-50"
+          href={detail.external_url}
+          rel="noreferrer"
+          target="_blank"
+        >
+          Open local URL <ArrowUpRight className="size-4" />
+        </a>
+      ) : null}
+      {canPublish ? (
+        <form action={publishNowAction}>
+          <input name="publicationId" type="hidden" value={detail.id} />
+          <SubmitButton>
+            <Send className="size-4" />
+            Publish now
+          </SubmitButton>
+        </form>
+      ) : null}
+      {canPublish ? (
+        <form action={scheduleAction}>
+          <input name="publicationId" type="hidden" value={detail.id} />
+          <SubmitButton variant="outline">
+            <CalendarClock className="size-4" />
+            Schedule
+          </SubmitButton>
+        </form>
+      ) : null}
+      {canRetry ? (
+        <form action={retryAction}>
+          <input name="publicationId" type="hidden" value={detail.id} />
+          <SubmitButton variant="outline">Retry</SubmitButton>
+        </form>
+      ) : null}
+      {canCancel ? (
+        <form action={cancelAction}>
+          <input name="publicationId" type="hidden" value={detail.id} />
+          <SubmitButton variant="ghost">Cancel</SubmitButton>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   const tone =
     status === "published" || status === "succeeded"
@@ -485,7 +842,7 @@ function Channel({
     <div className="flex items-center gap-3 rounded-xl border border-zinc-100 p-3">
       <span className={`grid size-9 place-items-center rounded-lg [&>svg]:size-4 ${color}`}>{icon}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold text-zinc-800">{name}</p>
+      <p className="truncate text-xs font-semibold text-zinc-800">{name}</p>
         <p className="mt-0.5 text-[10px] text-zinc-400">{detail}</p>
       </div>
       <span className="size-2 rounded-full bg-emerald-400 ring-4 ring-emerald-50" />

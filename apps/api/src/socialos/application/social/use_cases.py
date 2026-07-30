@@ -32,6 +32,7 @@ from socialos.domain.social import (
     PublicationAttempt,
     PublicationStatus,
     SocialAccount,
+    SocialAccountType,
     Workspace,
 )
 
@@ -143,6 +144,166 @@ class ListSocialAccounts:
         async with self._uow_factory() as uow:
             await require_workspace(uow, actor, workspace_id)
             return list(await uow.social_accounts.list_for_workspace(workspace_id))
+
+
+class LocalDevelopmentConnectionError(PermissionError):
+    """Raised when local-only social accounts are requested outside local development."""
+
+
+@dataclass(frozen=True, slots=True)
+class LocalDevelopmentConnectionResult:
+    connections: list[PlatformConnection]
+    accounts: list[SocialAccount]
+
+
+class EnsureLocalDevelopmentSocialAccounts:
+    def __init__(
+        self,
+        uow_factory: Callable[[], SocialUnitOfWork],
+        cipher: TokenCipher,
+        environment: str,
+        auth_mode: str,
+    ) -> None:
+        self._uow_factory = uow_factory
+        self._cipher = cipher
+        self._environment = environment
+        self._auth_mode = auth_mode
+
+    async def execute(
+        self,
+        actor: Actor,
+        workspace_id: UUID,
+    ) -> LocalDevelopmentConnectionResult:
+        actor.require(Permission.ORGANIZATION_MANAGE)
+        if self._environment != "local" or self._auth_mode != "development":
+            raise LocalDevelopmentConnectionError(
+                "Local development social accounts are only available when "
+                "ENVIRONMENT=local and AUTH_MODE=development"
+            )
+
+        capabilities_by_platform = {
+            Platform.FACEBOOK: {
+                "supports_text": True,
+                "supports_single_image": True,
+                "supports_multiple_images": False,
+                "supports_video": False,
+                "supports_reels": False,
+                "supports_stories": False,
+                "supports_scheduling": True,
+                "supports_delete": True,
+                "max_text_length": 5000,
+                "supported_media_types": ["image/jpeg", "image/png"],
+                "daily_publication_limit": 25,
+                "development_only": True,
+            },
+            Platform.INSTAGRAM: {
+                "supports_text": False,
+                "supports_single_image": True,
+                "supports_multiple_images": False,
+                "supports_video": False,
+                "supports_reels": False,
+                "supports_stories": False,
+                "supports_scheduling": True,
+                "supports_delete": True,
+                "max_text_length": 2200,
+                "supported_media_types": ["image/jpeg", "image/png"],
+                "daily_publication_limit": 25,
+                "development_only": True,
+            },
+        }
+        account_specs = (
+            (
+                Platform.FACEBOOK,
+                SocialAccountType.FACEBOOK_PAGE,
+                "local-dev-facebook-page",
+                "Kinetic Mobiles - Local Facebook Page",
+                "kineticmobiles.local.facebook",
+            ),
+            (
+                Platform.INSTAGRAM,
+                SocialAccountType.INSTAGRAM_BUSINESS,
+                "local-dev-instagram-business",
+                "Kinetic Mobiles - Local Instagram Business",
+                "kineticmobiles.local.instagram",
+            ),
+        )
+
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, workspace_id)
+            existing_connections = [
+                connection
+                for connection in await uow.platform_connections.list_for_workspace(workspace_id)
+                if connection.provider == "local-dev"
+            ]
+            existing_accounts = [
+                account
+                for account in await uow.social_accounts.list_for_workspace(workspace_id)
+                if account.platform_connection_id
+                in {connection.id for connection in existing_connections}
+            ]
+            existing_by_external_id = {
+                connection.external_account_id: connection for connection in existing_connections
+            }
+            existing_accounts_by_external_id = {
+                account.external_account_id: account for account in existing_accounts
+            }
+
+            encrypted_credentials = self._cipher.encrypt(
+                json.dumps(
+                    {
+                        "kind": "local-development",
+                        "publishes_real_content": False,
+                    },
+                    sort_keys=True,
+                )
+            )
+            connections = list(existing_connections)
+            accounts = list(existing_accounts)
+            for platform, account_type, external_id, display_name, username in account_specs:
+                connection = existing_by_external_id.get(external_id)
+                if connection is None:
+                    connection = PlatformConnection(
+                        workspace_id=workspace_id,
+                        provider="local-dev",
+                        platform=platform,
+                        external_account_id=external_id,
+                        external_account_name=display_name,
+                        encrypted_credentials=encrypted_credentials,
+                        scopes=["local_development_publish"],
+                        granted_scopes=["local_development_publish"],
+                        capabilities=capabilities_by_platform[platform],
+                        is_valid=True,
+                    )
+                    await uow.platform_connections.add(connection)
+                    connections.append(connection)
+
+                account = existing_accounts_by_external_id.get(external_id)
+                if account is None:
+                    account = SocialAccount(
+                        workspace_id=workspace_id,
+                        platform_connection_id=connection.id,
+                        platform=platform,
+                        account_type=account_type,
+                        external_account_id=external_id,
+                        display_name=display_name,
+                        username=username,
+                        capabilities=capabilities_by_platform[platform],
+                        selected=True,
+                        active=True,
+                        safe_metadata={
+                            "development_only": True,
+                            "publishes_real_content": False,
+                            "label": "Local development account",
+                        },
+                    )
+                    await uow.social_accounts.add(account)
+                    accounts.append(account)
+
+            await uow.commit()
+            return LocalDevelopmentConnectionResult(
+                connections=connections,
+                accounts=accounts,
+            )
 
 
 class BuildMetaAuthorizationUrl:
@@ -740,6 +901,7 @@ class PublishQueuedPublication:
                 publication.external_url = result.external_url
                 publication.status = PublicationStatus.PUBLISHED
                 publication.last_error = None
+                publication.next_attempt_at = None
                 publication.lease_expires_at = None
                 publication.execution_key = None
                 publication.uncertain_since = None
