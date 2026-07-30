@@ -119,6 +119,44 @@ async def test_publish_job_records_successful_attempt_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retry_after_terminal_attempt_uses_next_attempt_number() -> None:
+    connection, account, publication = make_ready_facebook_publication()
+    publication.status = PublicationStatus.FAILED_RETRYABLE
+    existing_attempts = [
+        PublicationAttempt(
+            publication_id=publication.id,
+            attempt_number=1,
+            status=AttemptStatus.STARTED,
+            provider="meta",
+        ),
+        PublicationAttempt(
+            publication_id=publication.id,
+            attempt_number=1,
+            status=AttemptStatus.FAILED_RETRYABLE,
+            provider="meta",
+            error_code="rate_limit",
+            error_message="Meta rate limit",
+        ),
+    ]
+    uow = InMemoryUow(
+        publication=publication,
+        connection=connection,
+        account=account,
+        attempts=existing_attempts,
+    )
+    provider = FakeProvider()
+
+    result = await PublishQueuedPublication(
+        lambda: cast(SocialUnitOfWork, uow),
+        {"meta": cast(SocialProvider, provider)},
+    ).execute(publication.id)
+
+    assert result is not None
+    assert result.status == PublicationStatus.PUBLISHED
+    assert [attempt.attempt_number for attempt in uow.attempts] == [1, 1, 2, 2]
+
+
+@pytest.mark.asyncio
 async def test_worker_death_before_meta_call_is_protected_by_active_lease() -> None:
     publication = Publication(
         workspace_id=uuid4(),
@@ -379,12 +417,13 @@ class InMemoryUow:
         connection: PlatformConnection | None = None,
         media_asset: MediaAsset | None = None,
         account: SocialAccount | None = None,
+        attempts: list[PublicationAttempt] | None = None,
     ) -> None:
         self.publications = InMemoryPublicationRepo(publication)
         self.platform_connections = InMemoryConnectionRepo(connection)
         self.media_assets = InMemoryMediaRepo(media_asset)
         self.social_accounts = InMemorySocialAccountRepo(account)
-        self.publication_attempts = InMemoryAttemptRepo()
+        self.publication_attempts = InMemoryAttemptRepo(attempts)
         self.attempts = self.publication_attempts.items
 
     async def __aenter__(self) -> "InMemoryUow":
@@ -452,16 +491,21 @@ class InMemorySocialAccountRepo:
 
 
 class InMemoryAttemptRepo:
-    def __init__(self) -> None:
-        self.items: list[PublicationAttempt] = []
+    def __init__(self, attempts: list[PublicationAttempt] | None = None) -> None:
+        self.items: list[PublicationAttempt] = attempts or []
 
     async def add(self, attempt: PublicationAttempt) -> PublicationAttempt:
         self.items.append(attempt)
         return attempt
 
     async def count_for_publication(self, publication_id: object) -> int:
-        return len(
-            [item for item in self.items if getattr(item, "publication_id", None) == publication_id]
+        return max(
+            (
+                item.attempt_number
+                for item in self.items
+                if getattr(item, "publication_id", None) == publication_id
+            ),
+            default=0,
         )
 
 
