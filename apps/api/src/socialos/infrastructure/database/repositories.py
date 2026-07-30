@@ -597,7 +597,13 @@ class SqlAlchemyPublicationAttemptRepository(PublicationAttemptRepository):
         return [self._attempt(model) for model in models]
 
     async def count_for_publication(self, publication_id: UUID) -> int:
-        return len(await self.list_for_publication(publication_id))
+        latest_attempt_number = await self._session.scalar(
+            select(PublicationAttemptModel.attempt_number)
+            .where(PublicationAttemptModel.publication_id == publication_id)
+            .order_by(PublicationAttemptModel.attempt_number.desc())
+            .limit(1)
+        )
+        return latest_attempt_number or 0
 
     @staticmethod
     def _attempt(model: PublicationAttemptModel) -> PublicationAttempt:
