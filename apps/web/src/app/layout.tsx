@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 
 import { AuthProvider } from "@/components/auth-provider";
@@ -18,6 +18,11 @@ export const metadata: Metadata = {
       follow: false,
     },
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
