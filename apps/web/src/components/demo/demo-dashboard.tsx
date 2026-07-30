@@ -116,7 +116,7 @@ export function DemoDashboard() {
   return (
     <main className="min-h-screen bg-[#f8f8fa] text-zinc-950">
       <div className="mx-auto grid max-w-[1500px] gap-6 px-4 py-5 lg:grid-cols-[280px_1fr] lg:px-6">
-        <aside className="rounded-lg border border-zinc-200 bg-white p-4 lg:sticky lg:top-5 lg:h-[calc(100vh-40px)]">
+        <aside className="min-w-0 rounded-lg border border-zinc-200 bg-white p-4 lg:sticky lg:top-5 lg:h-[calc(100vh-40px)]">
           <div className="flex items-center gap-3">
             <div className="grid size-9 place-items-center rounded-lg bg-zinc-950 text-white">
               <Sparkles className="size-4" />
@@ -145,7 +145,7 @@ export function DemoDashboard() {
           </Button>
         </aside>
 
-        <section className="space-y-6">
+        <section className="min-w-0 space-y-6">
           <header id="dashboard" className="rounded-lg border border-zinc-200 bg-white p-5">
             <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
               <div>
@@ -336,7 +336,7 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
 
 function Panel({ children, subtitle, title }: { children: React.ReactNode; subtitle: string; title: string }) {
   return (
-    <section className="rounded-lg border border-zinc-200 bg-white p-5">
+    <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-5">
       <div className="mb-4">
         <h2 className="text-sm font-semibold">{title}</h2>
         <p className="mt-1 text-xs text-zinc-500">{subtitle}</p>
