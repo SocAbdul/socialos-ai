@@ -938,6 +938,9 @@ class PublishQueuedPublication:
                         else PublicationStatus.FAILED_PERMANENT
                     )
                 publication.last_error = str(exc)
+                consumed_marker = getattr(exc, "consume_caption_marker", None)
+                if provider_name == "local-dev" and isinstance(consumed_marker, str):
+                    publication.caption = publication.caption.replace(consumed_marker, "").strip()
                 publication.next_attempt_at = (
                     datetime.now(UTC) + _backoff(attempt_number) if retryable else None
                 )

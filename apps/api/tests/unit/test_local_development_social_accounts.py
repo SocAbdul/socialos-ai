@@ -5,11 +5,12 @@ from uuid import UUID, uuid4
 import pytest
 
 from socialos.application.common.auth import Actor, OrganizationRole
-from socialos.application.social.ports import SocialProvider, SocialUnitOfWork
+from socialos.application.social.ports import JobQueue, SocialProvider, SocialUnitOfWork
 from socialos.application.social.use_cases import (
     EnsureLocalDevelopmentSocialAccounts,
     LocalDevelopmentConnectionError,
     PublishQueuedPublication,
+    RetryPublication,
 )
 from socialos.domain.social import (
     AttemptStatus,
@@ -116,6 +117,65 @@ async def test_local_development_provider_records_successful_publication_attempt
     assert uow.attempts[-1].provider == "local-dev"
 
 
+@pytest.mark.asyncio
+async def test_local_retryable_failure_is_consumed_and_retry_succeeds_once() -> None:
+    workspace = make_workspace()
+    uow = LocalDevelopmentUow(workspace)
+    result = await EnsureLocalDevelopmentSocialAccounts(
+        lambda: cast(SocialUnitOfWork, uow),
+        FernetTokenCipher("test-key"),
+        environment="local",
+        auth_mode="development",
+    ).execute(make_actor(), workspace.id)
+    account = next(account for account in result.accounts if account.platform == Platform.FACEBOOK)
+    publication = Publication(
+        workspace_id=workspace.id,
+        content_item_id=uuid4(),
+        platform_connection_id=account.platform_connection_id,
+        social_account_id=account.id,
+        platform=Platform.FACEBOOK,
+        caption="Kinetic Mobiles local retry demo. [local-retryable-error]",
+        status=PublicationStatus.QUEUED,
+    )
+    uow.publication = publication
+    publisher = PublishQueuedPublication(
+        lambda: cast(SocialUnitOfWork, uow),
+        {"local-dev": cast(SocialProvider, LocalDevelopmentSocialProvider())},
+    )
+
+    failed = await publisher.execute(publication.id)
+
+    assert failed is not None
+    assert failed.status == PublicationStatus.FAILED_RETRYABLE
+    assert "[local-retryable-error]" not in failed.caption
+    assert [attempt.attempt_number for attempt in uow.attempts] == [1, 1]
+
+    queue = RecordingJobQueue()
+    retried = await RetryPublication(
+        lambda: cast(SocialUnitOfWork, uow), cast(JobQueue, queue)
+    ).execute(make_actor(), publication.id)
+    with pytest.raises(ValueError, match="Only retryable or uncertain"):
+        await RetryPublication(lambda: cast(SocialUnitOfWork, uow), cast(JobQueue, queue)).execute(
+            make_actor(), publication.id
+        )
+
+    assert retried.status == PublicationStatus.QUEUED
+    assert queue.publication_ids == [publication.id]
+
+    published = await PublishQueuedPublication(
+        lambda: cast(SocialUnitOfWork, uow),
+        {"local-dev": cast(SocialProvider, LocalDevelopmentSocialProvider())},
+    ).execute(publication.id)
+
+    assert published is not None
+    assert published.status == PublicationStatus.PUBLISHED
+    assert [attempt.attempt_number for attempt in uow.attempts] == [1, 1, 2, 2]
+    assert [attempt.status for attempt in uow.attempts[-2:]] == [
+        AttemptStatus.STARTED,
+        AttemptStatus.SUCCEEDED,
+    ]
+
+
 def make_workspace() -> Workspace:
     return Workspace(
         owner_id="user_local_founder",
@@ -161,6 +221,13 @@ class WorkspaceRepo:
 
     async def get(self, workspace_id: UUID) -> Workspace | None:
         if workspace_id == self._workspace.id:
+            return self._workspace
+        return None
+
+    async def get_by_external_organization_id(
+        self, external_organization_id: str
+    ) -> Workspace | None:
+        if external_organization_id == self._workspace.external_organization_id:
             return self._workspace
         return None
 
@@ -222,6 +289,16 @@ class PublicationRepo:
             return publication
         return None
 
+    async def get(self, publication_id: UUID, workspace_id: UUID) -> Publication | None:
+        publication = self._uow.publication
+        if (
+            publication
+            and publication.id == publication_id
+            and publication.workspace_id == workspace_id
+        ):
+            return publication
+        return None
+
     async def update(self, publication: Publication) -> Publication:
         self._uow.publication = publication
         return publication
@@ -243,3 +320,11 @@ class PublicationAttemptRepo:
             (item.attempt_number for item in self._items if item.publication_id == publication_id),
             default=0,
         )
+
+
+class RecordingJobQueue:
+    def __init__(self) -> None:
+        self.publication_ids: list[UUID] = []
+
+    async def enqueue_publication(self, publication_id: UUID, run_at: object = None) -> None:
+        self.publication_ids.append(publication_id)

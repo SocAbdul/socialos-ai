@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints
 
 from socialos.application.common.auth import Actor
 from socialos.application.social.use_cases import (
@@ -69,6 +69,17 @@ from socialos.presentation.api.dependencies import get_actor
 
 router = APIRouter(tags=["social"])
 
+BrandName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
+CampaignName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=180)
+]
+ProfileText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2_000)
+]
+ContentText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5_000)
+]
+
 
 def _cipher() -> FernetTokenCipher:
     return FernetTokenCipher(get_settings().token_encryption_key)
@@ -105,9 +116,9 @@ class WorkspaceResponse(BaseModel):
 class CreateBrandProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=160)
-    voice: str = Field(default="", max_length=5000)
-    audience: str = Field(default="", max_length=5000)
+    name: BrandName
+    voice: ProfileText
+    audience: ProfileText
 
 
 class BrandProfileResponse(BaseModel):
@@ -218,7 +229,7 @@ class CreateCampaignRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     brand_profile_id: UUID
-    name: str = Field(min_length=1, max_length=180)
+    name: CampaignName
 
 
 class CampaignResponse(BaseModel):
@@ -245,7 +256,7 @@ class CreateContentItemRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     campaign_id: UUID
-    body: str = Field(min_length=1, max_length=10_000)
+    body: ContentText
 
 
 class ContentItemResponse(BaseModel):
@@ -269,8 +280,10 @@ class RegisterMediaAssetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     media_type: MediaType
-    storage_url: str
-    content_type: str
+    storage_url: HttpUrl
+    content_type: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
+    ]
     checksum_sha256: str = Field(min_length=64, max_length=64)
 
 
@@ -318,7 +331,7 @@ class MediaAssetListResponse(BaseModel):
 class AdaptContentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    text: str = Field(min_length=1, max_length=10_000)
+    text: ContentText
     platform: Platform
 
 
@@ -359,7 +372,7 @@ class CreatePublicationRequest(BaseModel):
     platform_connection_id: UUID
     social_account_id: UUID
     platform: Platform
-    caption: str = Field(min_length=1, max_length=10_000)
+    caption: ContentText
     media_asset_id: UUID | None = None
 
 
@@ -708,7 +721,7 @@ async def register_media_asset(
         RegisterMediaAssetCommand(
             workspace_id=workspace_id,
             media_type=request.media_type,
-            storage_url=request.storage_url,
+            storage_url=str(request.storage_url),
             content_type=request.content_type,
             checksum_sha256=request.checksum_sha256,
         ),

@@ -14,6 +14,7 @@ from socialos.domain.social import Platform, PlatformConnection, SocialAccount
 class LocalDevelopmentRetryableError(RuntimeError):
     retryable = True
     error_code = "LOCAL_RETRYABLE"
+    consume_caption_marker = "[local-retryable-error]"
 
 
 class LocalDevelopmentSocialProvider:

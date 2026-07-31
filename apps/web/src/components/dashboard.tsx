@@ -17,13 +17,13 @@ import {
 
 import {
   cancelAction,
-  createWalkthroughPublicationAction,
   ensureLocalDevelopmentAccountsAction,
   publishNowAction,
   retryAction,
   scheduleAction,
 } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
+import { WalkthroughForm } from "@/components/walkthrough-form";
 import { PublicationStatusPoller } from "@/components/publication-status-poller";
 import { MobileNavigation } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ import type {
 import { groupPublicationAttempts } from "@/lib/publication-attempts";
 
 export function Dashboard({
+  aiCost,
   brands,
   campaigns,
   connections,
@@ -54,6 +55,7 @@ export function Dashboard({
   socialAccounts,
   workspace,
 }: {
+  aiCost: string | null;
   brands: BrandProfile[];
   campaigns: Campaign[];
   connections: PlatformConnection[];
@@ -110,6 +112,14 @@ export function Dashboard({
           >
             {notice}
           </div>
+        ) : null}
+        {aiCost ? (
+          <p
+            className="mb-6 text-sm font-medium text-emerald-700"
+            role="status"
+          >
+            Local simulation · AI cost: €{Number(aiCost).toFixed(2)}
+          </p>
         ) : null}
 
         <section className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
@@ -361,9 +371,6 @@ function LocalPublishingWalkthrough({
   const localConnections = connections.filter(
     (connection) => connection.provider === "local-dev",
   );
-  const defaultBody =
-    "Kinetic Mobiles now offers same-day screen repairs for busy professionals in Valencia. Book online, drop off your phone, and get back to work with a quality-tested display.";
-
   if (!workspace) {
     return (
       <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">
@@ -385,9 +392,8 @@ function LocalPublishingWalkthrough({
               Create a real local publication
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-              This flow writes to PostgreSQL, adapts copy with the local AI
-              service, queues work through Redis/Celery, and records publication
-              attempts. It never calls Meta.
+              Adapt your message, choose a test account, and follow the delivery
+              result without publishing to a real social network.
             </p>
           </div>
           <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
@@ -412,7 +418,7 @@ function LocalPublishingWalkthrough({
               <SubmitButton
                 pendingLabel={
                   localAccounts.length > 0
-                    ? "Refreshing accounts..."
+                    ? "Refreshing..."
                     : "Creating accounts..."
                 }
                 variant="outline"
@@ -442,87 +448,7 @@ function LocalPublishingWalkthrough({
           ) : null}
         </div>
 
-        <form
-          action={createWalkthroughPublicationAction}
-          className="mt-6 grid gap-5"
-        >
-          <input name="workspaceId" type="hidden" value={workspace.id} />
-          <div className="grid gap-4 md:grid-cols-2">
-            <LabelledInput
-              defaultValue="Kinetic Mobiles"
-              label="Brand Profile"
-              name="brandName"
-              required
-            />
-            <LabelledInput
-              defaultValue="Same-day repair launch"
-              label="Campaign"
-              name="campaignName"
-              required
-            />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <LabelledTextarea
-              defaultValue="Helpful, precise, practical and confident. Never gimmicky."
-              label="Brand voice"
-              name="voice"
-            />
-            <LabelledTextarea
-              defaultValue="Local professionals and families who need reliable phone repairs, accessories, and refurbished devices."
-              label="Audience"
-              name="audience"
-            />
-          </div>
-          <LabelledTextarea
-            defaultValue={defaultBody}
-            label="Original content"
-            name="contentBody"
-            required
-          />
-          <div className="grid gap-4 md:grid-cols-[.7fr_1.3fr]">
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Platform
-              <select
-                className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none ring-violet-500 transition focus:ring-2"
-                name="platform"
-                defaultValue="instagram"
-              >
-                <option value="instagram">Instagram local business</option>
-                <option value="facebook">Facebook local page</option>
-              </select>
-            </label>
-            <LabelledInput
-              defaultValue="https://media.local.socialos.invalid/kinetic-mobiles/same-day-screen-repair.jpg"
-              label="Media Asset URL"
-              name="mediaUrl"
-              required
-            />
-          </div>
-          <input name="contentType" type="hidden" value="image/jpeg" />
-          <input
-            name="checksumSha256"
-            type="hidden"
-            value="b4b9b02e6f09a9bd760f388b67351e2b1dd3bba6a63c10cf7e5f541d176ad39c"
-          />
-          <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
-            <input
-              className="mt-1"
-              name="simulateRetryableError"
-              type="checkbox"
-            />
-            <span>
-              Simulate retryable provider error. Use this to verify retry from
-              the publication detail panel.
-            </span>
-          </label>
-          <SubmitButton
-            className="w-full sm:w-fit"
-            pendingLabel="Adapting and creating..."
-          >
-            <Sparkles className="size-4" />
-            Adapt and create publication
-          </SubmitButton>
-        </form>
+        <WalkthroughForm workspaceId={workspace.id} />
       </div>
 
       <div className="min-w-0 space-y-4">
@@ -566,7 +492,10 @@ function InventoryCard({
   value: number;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200/80 bg-white p-4">
+    <div
+      className="rounded-2xl border border-zinc-200/80 bg-white p-4"
+      data-testid={`inventory-${label.toLowerCase().replaceAll(" ", "-")}`}
+    >
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-zinc-900">{label}</p>
         <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-bold text-zinc-600">
@@ -574,57 +503,9 @@ function InventoryCard({
         </span>
       </div>
       <p className="mt-2 text-xs leading-5 text-zinc-500">
-        {value > 0 ? "Saved in local PostgreSQL." : empty}
+        {value > 0 ? "Saved in this local preview." : empty}
       </p>
     </div>
-  );
-}
-
-function LabelledInput({
-  defaultValue,
-  label,
-  name,
-  required = false,
-}: {
-  defaultValue: string;
-  label: string;
-  name: string;
-  required?: boolean;
-}) {
-  return (
-    <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-      {label}
-      <input
-        className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal text-zinc-800 outline-none ring-violet-500 transition focus:ring-2"
-        defaultValue={defaultValue}
-        name={name}
-        required={required}
-      />
-    </label>
-  );
-}
-
-function LabelledTextarea({
-  defaultValue,
-  label,
-  name,
-  required = false,
-}: {
-  defaultValue: string;
-  label: string;
-  name: string;
-  required?: boolean;
-}) {
-  return (
-    <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-      {label}
-      <textarea
-        className="min-h-28 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-normal leading-6 text-zinc-800 outline-none ring-violet-500 transition focus:ring-2"
-        defaultValue={defaultValue}
-        name={name}
-        required={required}
-      />
-    </label>
   );
 }
 
