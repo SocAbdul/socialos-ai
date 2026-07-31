@@ -19,15 +19,29 @@ import {
   retryPublication,
   schedulePublication,
 } from "@/lib/api";
+import {
+  type WalkthroughFieldErrors,
+  validateWalkthrough,
+} from "@/lib/walkthrough-validation";
+
+export type WalkthroughActionState = {
+  errors: WalkthroughFieldErrors;
+  message: string | null;
+};
 
 function field(formData: FormData, name: string): string {
   const value = formData.get(name);
   return typeof value === "string" ? value.trim() : "";
 }
 
-function noticeUrl(publicationId: string | null, notice: string): Route {
+function noticeUrl(
+  publicationId: string | null,
+  notice: string,
+  aiCost?: string,
+): Route {
   const params = new URLSearchParams({ notice });
   if (publicationId) params.set("publication", publicationId);
+  if (aiCost) params.set("aiCost", aiCost);
   return `/?${params.toString()}` as Route;
 }
 
@@ -41,47 +55,55 @@ export async function ensureLocalDevelopmentAccountsAction(formData: FormData) {
   redirect(noticeUrl(null, "Local development accounts are ready."));
 }
 
-export async function createWalkthroughPublicationAction(formData: FormData) {
-  const workspaceId = field(formData, "workspaceId");
-  const platform = field(formData, "platform") as "facebook" | "instagram";
-  const brandName = field(formData, "brandName");
-  const voice = field(formData, "voice");
-  const audience = field(formData, "audience");
-  const campaignName = field(formData, "campaignName");
-  const contentBody = field(formData, "contentBody");
-  const contentType = field(formData, "contentType") || "image/jpeg";
-  const mediaUrl =
-    field(formData, "mediaUrl") ||
-    "https://media.local.socialos.invalid/kinetic-mobiles/same-day-screen-repair.jpg";
-  const checksum =
-    field(formData, "checksumSha256") ||
-    "b4b9b02e6f09a9bd760f388b67351e2b1dd3bba6a63c10cf7e5f541d176ad39c";
-  const simulateRetryableError = field(formData, "simulateRetryableError") === "on";
+export async function createWalkthroughPublicationAction(
+  _previousState: WalkthroughActionState,
+  formData: FormData,
+): Promise<WalkthroughActionState> {
+  const validation = validateWalkthrough(formData);
+  if (!validation.data) {
+    return {
+      errors: validation.errors,
+      message: "Nothing was saved. Complete the required fields and try again.",
+    };
+  }
+  const {
+    audience,
+    brandName,
+    campaignName,
+    checksumSha256: checksum,
+    contentBody,
+    contentType,
+    mediaUrl,
+    platform,
+    simulateRetryableError,
+    voice,
+    workspaceId,
+  } = validation.data;
 
   const brand = await createBrandProfile(workspaceId, {
     name: brandName,
     voice,
     audience,
   });
-  if (!brand) redirect(noticeUrl(null, "Brand profile could not be created."));
+  if (!brand) return actionFailure("Brand profile could not be created.");
 
   const campaign = await createCampaign(workspaceId, {
     brand_profile_id: brand.id,
     name: campaignName,
   });
-  if (!campaign) redirect(noticeUrl(null, "Campaign could not be created."));
+  if (!campaign) return actionFailure("Campaign could not be created.");
 
   const content = await createContentItem(workspaceId, {
     campaign_id: campaign.id,
     body: contentBody,
   });
-  if (!content) redirect(noticeUrl(null, "Content item could not be created."));
+  if (!content) return actionFailure("Content item could not be created.");
 
   const adaptation = await adaptContentForPlatform(workspaceId, {
     text: content.body,
     platform,
   });
-  if (!adaptation) redirect(noticeUrl(null, "Local AI adaptation failed."));
+  if (!adaptation) return actionFailure("Local AI adaptation failed.");
 
   const media = await registerMediaAsset(workspaceId, {
     media_type: "image",
@@ -89,7 +111,7 @@ export async function createWalkthroughPublicationAction(formData: FormData) {
     content_type: contentType,
     checksum_sha256: checksum,
   });
-  if (!media) redirect(noticeUrl(null, "Media asset could not be registered."));
+  if (!media) return actionFailure("Check the Media Asset URL and try again.");
 
   let accounts = await listSocialAccounts(workspaceId);
   if (!accounts.some((account) => account.platform === platform)) {
@@ -97,13 +119,14 @@ export async function createWalkthroughPublicationAction(formData: FormData) {
     accounts = await listSocialAccounts(workspaceId);
   }
   const account = accounts.find((item) => item.platform === platform);
-  if (!account) redirect(noticeUrl(null, "No local social account is available."));
+  if (!account) return actionFailure("No local social account is available.");
 
   const connections = await listPlatformConnections(workspaceId);
   const connection = connections.find(
     (item) => item.id === account.platform_connection_id,
   );
-  if (!connection) redirect(noticeUrl(null, "No local platform connection is available."));
+  if (!connection)
+    return actionFailure("No local platform connection is available.");
 
   const caption = simulateRetryableError
     ? `${adaptation.result}\n\n[local-retryable-error]`
@@ -116,10 +139,20 @@ export async function createWalkthroughPublicationAction(formData: FormData) {
     caption,
     media_asset_id: media.id,
   });
-  if (!publication) redirect(noticeUrl(null, "Publication could not be created."));
+  if (!publication) return actionFailure("Publication could not be created.");
 
   revalidatePath("/");
-  redirect(noticeUrl(publication.id, "Publication created and ready."));
+  redirect(
+    noticeUrl(
+      publication.id,
+      "Publication created and ready.",
+      adaptation.estimated_cost,
+    ),
+  );
+}
+
+function actionFailure(message: string): WalkthroughActionState {
+  return { errors: {}, message };
 }
 
 export async function publishNowAction(formData: FormData) {
@@ -129,7 +162,9 @@ export async function publishNowAction(formData: FormData) {
   redirect(
     noticeUrl(
       publicationId,
-      publication ? "Publication queued for local worker." : "Publication could not be queued.",
+      publication
+        ? "Publication queued for local worker."
+        : "Publication could not be queued.",
     ),
   );
 }
@@ -142,7 +177,9 @@ export async function scheduleAction(formData: FormData) {
   redirect(
     noticeUrl(
       publicationId,
-      publication ? "Publication scheduled 15 minutes from now." : "Publication could not be scheduled.",
+      publication
+        ? "Publication scheduled 15 minutes from now."
+        : "Publication could not be scheduled.",
     ),
   );
 }
@@ -154,7 +191,9 @@ export async function retryAction(formData: FormData) {
   redirect(
     noticeUrl(
       publicationId,
-      publication ? "Retry queued for local worker." : "Publication cannot be retried now.",
+      publication
+        ? "Retry queued for local worker."
+        : "Publication cannot be retried now.",
     ),
   );
 }
@@ -166,7 +205,9 @@ export async function cancelAction(formData: FormData) {
   redirect(
     noticeUrl(
       publicationId,
-      publication ? "Publication cancelled." : "Publication cannot be cancelled now.",
+      publication
+        ? "Publication cancelled."
+        : "Publication cannot be cancelled now.",
     ),
   );
 }

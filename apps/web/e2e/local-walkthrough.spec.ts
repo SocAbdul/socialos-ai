@@ -35,6 +35,39 @@ async function openWalkthrough(page: import("@playwright/test").Page) {
   }
 }
 
+async function fillWalkthrough(
+  page: import("@playwright/test").Page,
+  overrides: {
+    content?: string;
+    mediaUrl?: string;
+    platform?: "facebook" | "instagram";
+  } = {},
+) {
+  await page.getByLabel("Brand Profile").fill("Kinetic Mobiles");
+  await page.getByLabel("Campaign").fill("Same-day repair launch");
+  await page
+    .getByLabel("Brand voice")
+    .fill("Helpful, precise, practical and confident. Never gimmicky.");
+  await page
+    .getByLabel("Audience")
+    .fill("Local professionals and families who need reliable phone repairs.");
+  await page
+    .getByLabel("Original content")
+    .fill(
+      overrides.content ??
+        "Kinetic Mobiles now offers same-day screen repairs for busy professionals in Valencia.",
+    );
+  await page
+    .getByLabel("Platform")
+    .selectOption(overrides.platform ?? "instagram");
+  await page
+    .getByLabel("Media Asset URL")
+    .fill(
+      overrides.mediaUrl ??
+        "https://media.local.socialos.invalid/kinetic-mobiles/same-day-screen-repair.jpg",
+    );
+}
+
 test.describe("backend-connected local publishing walkthrough", () => {
   test.setTimeout(120_000);
 
@@ -54,31 +87,82 @@ test.describe("backend-connected local publishing walkthrough", () => {
 
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
+    const inventoryIds = [
+      "inventory-brand-profiles",
+      "inventory-campaigns",
+      "inventory-content-items",
+      "inventory-media-assets",
+    ];
+    const inventoryBefore = await Promise.all(
+      inventoryIds.map((id) =>
+        page.getByTestId(id).locator("span").textContent(),
+      ),
+    );
+
+    await page
+      .getByRole("button", { name: "Adapt and create publication" })
+      .click();
+    await expect(page.getByText("Brand Profile is required.")).toBeVisible();
+    await expect(page.getByText("Campaign is required.")).toBeVisible();
+    await expect(page.getByText("Original content is required.")).toBeVisible();
+    await expect(page.getByLabel("Brand Profile")).toBeFocused();
+    await expect(page.getByLabel("Brand Profile")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    const inventoryAfter = await Promise.all(
+      inventoryIds.map((id) =>
+        page.getByTestId(id).locator("span").textContent(),
+      ),
+    );
+    expect(inventoryAfter).toEqual(inventoryBefore);
+
+    await fillWalkthrough(page, { mediaUrl: "not-a-valid-url" });
+    await page
+      .getByRole("button", { name: "Adapt and create publication" })
+      .click();
+    await expect(
+      page.getByText("Enter a complete http or https URL."),
+    ).toBeVisible();
+    await expect(page.getByLabel("Media Asset URL")).toBeFocused();
+    await expect(page.getByLabel("Brand Profile")).toHaveValue(
+      "Kinetic Mobiles",
+    );
+    await page
+      .getByLabel("Media Asset URL")
+      .fill(
+        "https://media.local.socialos.invalid/kinetic-mobiles/same-day-screen-repair.jpg",
+      );
+
     let delayedSubmission = false;
-    await page.route("**/*", async (route) => {
+    const delayedSubmissionHandler = async (
+      route: import("@playwright/test").Route,
+    ) => {
       if (!delayedSubmission && route.request().method() === "POST") {
         delayedSubmission = true;
         await new Promise((resolve) => setTimeout(resolve, 2_000));
       }
       await route.continue();
-    });
+    };
+    await page.route("**/*", delayedSubmissionHandler);
     const accountsButton = page.getByRole("button", {
       name: /local accounts/i,
     });
     const loadingWasVisible = page.waitForFunction(() => {
       const button = [...document.querySelectorAll("button")].find(
-        (candidate) => /accounts/i.test(candidate.textContent ?? ""),
+        (candidate) =>
+          /Creating accounts|Refreshing/.test(candidate.textContent ?? ""),
       );
       return Boolean(
         button?.hasAttribute("disabled") &&
-        /Creating accounts|Refreshing accounts/.test(button.textContent ?? ""),
+        /Creating accounts|Refreshing/.test(button.textContent ?? ""),
       );
     });
     await Promise.all([loadingWasVisible, accountsButton.click()]);
     await expect(
       page.getByText("Local development accounts are ready."),
     ).toBeVisible();
-    await page.unroute("**/*");
+    await page.unroute("**/*", delayedSubmissionHandler);
     await expect(
       page.locator("#create-post").getByText("Local Facebook Page"),
     ).toBeVisible();
@@ -86,13 +170,45 @@ test.describe("backend-connected local publishing walkthrough", () => {
       page.locator("#create-post").getByText("Local Instagram Business"),
     ).toBeVisible();
 
+    let delayedRefresh = false;
+    const delayedRefreshHandler = async (
+      route: import("@playwright/test").Route,
+    ) => {
+      if (!delayedRefresh && route.request().method() === "POST") {
+        delayedRefresh = true;
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+      }
+      await route.continue();
+    };
+    await page.route("**/*", delayedRefreshHandler);
+    const refreshButton = page.getByRole("button", {
+      name: "Refresh local accounts",
+    });
+    const refreshPending = page.waitForFunction(() => {
+      const button = [...document.querySelectorAll("button")].find(
+        (candidate) => candidate.textContent?.includes("Refreshing"),
+      );
+      return Boolean(button?.hasAttribute("disabled"));
+    });
+    const refreshResponse = page.waitForResponse(
+      (response) => response.request().method() === "POST",
+    );
+    await Promise.all([refreshPending, refreshResponse, refreshButton.click()]);
+    await page.waitForLoadState("networkidle");
+    await page.unroute("**/*", delayedRefreshHandler);
+    await fillWalkthrough(page);
+
     await page
       .getByRole("button", { name: "Adapt and create publication" })
-      .click();
+      .dblclick();
     await expect(
       page.getByText("Publication created and ready."),
     ).toBeVisible();
+    await expect(page.getByText("AI cost: €0.00")).toBeVisible();
     await expect(page.getByText("Publication diagnostics")).toBeVisible();
+    await expect(
+      page.getByTestId("inventory-brand-profiles").locator("span"),
+    ).toHaveText(String(Number(inventoryBefore[0]) + 1));
 
     await page.getByRole("button", { name: "Schedule", exact: true }).click();
     await expect(
@@ -104,12 +220,11 @@ test.describe("backend-connected local publishing walkthrough", () => {
     await expect(page.getByText("Publication cancelled.")).toBeVisible();
     await expect(page.getByText("cancelled").first()).toBeVisible();
 
-    await page.getByLabel("Platform").selectOption("facebook");
-    await page
-      .getByLabel("Original content")
-      .fill(
+    await fillWalkthrough(page, {
+      content:
         "Kinetic Mobiles can diagnose battery, charging and screen issues before lunch for local business fleets.",
-      );
+      platform: "facebook",
+    });
     await page
       .getByRole("button", { name: "Adapt and create publication" })
       .click();
@@ -130,12 +245,12 @@ test.describe("backend-connected local publishing walkthrough", () => {
     ).toBeVisible();
     await expect(page.getByText("Open local URL")).toBeVisible();
 
-    await page.getByLabel("Simulate retryable provider error").check();
-    await page
-      .getByLabel("Original content")
-      .fill(
+    await fillWalkthrough(page, {
+      content:
         "Kinetic Mobiles is testing safe retry handling for local social publishing.",
-      );
+      platform: "facebook",
+    });
+    await page.getByLabel(/Simulate one retryable failure/).check();
     await page
       .getByRole("button", { name: "Adapt and create publication" })
       .click();
@@ -151,9 +266,13 @@ test.describe("backend-connected local publishing walkthrough", () => {
     await expect(
       page.getByText("Retry queued for local worker."),
     ).toBeVisible();
-    await reloadUntilText(page, "2 attempts");
+    await reloadUntilText(page, "published");
+    await expect(page.getByText("2 attempts", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("region", { name: "Attempt 2" }).getByText("started"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Attempt 2" }).getByText("succeeded"),
     ).toBeVisible();
   });
 
@@ -180,12 +299,11 @@ test.describe("backend-connected local publishing walkthrough", () => {
     await expect(
       page.getByText("Local development accounts are ready."),
     ).toBeVisible();
-    await page.getByLabel("Platform").selectOption("instagram");
-    await page
-      .getByLabel("Media Asset URL")
-      .fill(
+    await fillWalkthrough(page, {
+      content: "Kinetic Mobiles prueba una publicación segura desde un móvil.",
+      mediaUrl:
         "https://media.local.socialos.invalid/kinetic-mobiles/mobile-demo.jpg",
-      );
+    });
     await page
       .getByRole("button", { name: "Adapt and create publication" })
       .click();
@@ -207,12 +325,13 @@ test.describe("backend-connected local publishing walkthrough", () => {
     await page.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByText("Publication cancelled.")).toBeVisible();
 
-    await page.getByLabel("Simulate retryable provider error").check();
-    await page
-      .getByLabel("Original content")
-      .fill(
+    await fillWalkthrough(page, {
+      content:
         "Kinetic Mobiles prueba la recuperación segura de publicaciones desde un móvil.",
-      );
+      mediaUrl:
+        "https://media.local.socialos.invalid/kinetic-mobiles/mobile-demo.jpg",
+    });
+    await page.getByLabel(/Simulate one retryable failure/).check();
     await page
       .getByRole("button", { name: "Adapt and create publication" })
       .click();
@@ -229,6 +348,8 @@ test.describe("backend-connected local publishing walkthrough", () => {
     await expect(
       page.getByText("Retry queued for local worker."),
     ).toBeVisible();
+    await reloadUntilText(page, "published");
+    await expect(page.getByText("2 attempts", { exact: true })).toBeVisible();
 
     const viewport = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

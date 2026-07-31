@@ -9,11 +9,13 @@ import { cn } from "@/lib/utils";
 export function SubmitButton({
   children,
   className,
+  disabled = false,
   pendingLabel = "Working...",
   variant,
 }: {
   children: React.ReactNode;
   className?: string;
+  disabled?: boolean;
   pendingLabel?: string;
   variant?: "default" | "outline" | "ghost";
 }) {
@@ -21,9 +23,9 @@ export function SubmitButton({
 
   return (
     <Button
-      aria-disabled={pending}
+      aria-disabled={pending || disabled}
       className={cn("min-h-11", className)}
-      disabled={pending}
+      disabled={pending || disabled}
       variant={variant}
     >
       {pending ? (

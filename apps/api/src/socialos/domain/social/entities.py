@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 
@@ -90,8 +91,12 @@ class BrandProfile:
 
     def __post_init__(self) -> None:
         self.name = self.name.strip()
+        self.voice = self.voice.strip()
+        self.audience = self.audience.strip()
         if not self.name:
             raise DomainValidationError("Brand profile name cannot be empty")
+        if len(self.name) > 160:
+            raise DomainValidationError("Brand profile name is too long")
 
 
 @dataclass(slots=True)
@@ -144,6 +149,13 @@ class Campaign:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
+    def __post_init__(self) -> None:
+        self.name = self.name.strip()
+        if not self.name:
+            raise DomainValidationError("Campaign name cannot be empty")
+        if len(self.name) > 180:
+            raise DomainValidationError("Campaign name is too long")
+
 
 @dataclass(slots=True)
 class ContentItem:
@@ -159,6 +171,8 @@ class ContentItem:
         self.body = self.body.strip()
         if not self.body:
             raise DomainValidationError("Content body cannot be empty")
+        if len(self.body) > 5_000:
+            raise DomainValidationError("Content body is too long")
 
 
 @dataclass(slots=True)
@@ -171,6 +185,12 @@ class MediaAsset:
     checksum_sha256: str
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        self.storage_url = self.storage_url.strip()
+        parsed_url = urlsplit(self.storage_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise DomainValidationError("Media URL must use http or https")
 
 
 @dataclass(slots=True)
