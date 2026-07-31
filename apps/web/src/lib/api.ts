@@ -153,6 +153,30 @@ const connectionListSchema = z.object({
   items: z.array(connectionSchema),
 });
 
+const socialAccountSchema = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  platform_connection_id: z.string().uuid(),
+  platform: z.enum(["facebook", "instagram"]),
+  account_type: z.string(),
+  external_account_id: z.string(),
+  display_name: z.string(),
+  username: z.string().nullable(),
+  capabilities: z.record(z.string(), z.unknown()),
+  selected: z.boolean(),
+  active: z.boolean(),
+  last_validated_at: z.string().nullable(),
+});
+
+const socialAccountListSchema = z.object({
+  items: z.array(socialAccountSchema),
+});
+
+const localDevelopmentSocialAccountsSchema = z.object({
+  connections: z.array(connectionSchema),
+  accounts: z.array(socialAccountSchema),
+});
+
 const mediaUploadTargetSchema = z.object({
   object_key: z.string().min(1),
   upload_url: z.string().url(),
@@ -184,6 +208,7 @@ export type Campaign = z.infer<typeof campaignSchema>;
 export type ContentItem = z.infer<typeof contentItemSchema>;
 export type AIGeneration = z.infer<typeof aiGenerationSchema>;
 export type PlatformConnection = z.infer<typeof connectionSchema>;
+export type SocialAccount = z.infer<typeof socialAccountSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 
@@ -554,6 +579,48 @@ export async function listPlatformConnections(
     );
     if (!response.ok) return [];
     return connectionListSchema.parse(await response.json()).items;
+  } catch {
+    return [];
+  }
+}
+
+export async function ensureLocalDevelopmentSocialAccounts(
+  workspaceId: string,
+): Promise<{
+  connections: PlatformConnection[];
+  accounts: SocialAccount[];
+} | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/platform-connections/local-development`,
+      {
+        method: "POST",
+        headers,
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    return localDevelopmentSocialAccountsSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function listSocialAccounts(
+  workspaceId: string,
+): Promise<SocialAccount[]> {
+  try {
+    const headers = await authenticationHeaders();
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/social-accounts`,
+      {
+        headers,
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return [];
+    return socialAccountListSchema.parse(await response.json()).items;
   } catch {
     return [];
   }

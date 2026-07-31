@@ -7,12 +7,21 @@ import { Sidebar } from "@/components/sidebar";
 import {
   ensureWorkspace,
   getPublication,
+  listBrandProfiles,
+  listCampaigns,
+  listContentItems,
+  listMediaAssets,
   listPlatformConnections,
   listPosts,
   listPublications,
+  listSocialAccounts,
 } from "@/lib/api";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams?: Promise<{ publication?: string; notice?: string }>;
+}) {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
     return <DemoDashboard />;
   }
@@ -29,16 +38,38 @@ export default async function Home() {
         listPublications(workspace.id),
       ])
     : [[], []];
-  const publicationDetail = publications[0] ? await getPublication(publications[0].id) : null;
+  const [brands, campaigns, contentItems, mediaAssets, socialAccounts] = workspace
+    ? await Promise.all([
+        listBrandProfiles(workspace.id),
+        listCampaigns(workspace.id),
+        listContentItems(workspace.id),
+        listMediaAssets(workspace.id),
+        listSocialAccounts(workspace.id),
+      ])
+    : [[], [], [], [], []];
+  const params = await searchParams;
+  const selectedPublication =
+    publications.find((publication) => publication.id === params?.publication) ??
+    publications[0] ??
+    null;
+  const publicationDetail = selectedPublication
+    ? await getPublication(selectedPublication.id)
+    : null;
 
   return (
     <>
       <Sidebar />
       <Dashboard
+        brands={brands}
+        campaigns={campaigns}
         connections={connections}
+        contentItems={contentItems}
+        mediaAssets={mediaAssets}
+        notice={params?.notice ?? null}
         posts={posts}
         publicationDetail={publicationDetail}
         publications={publications}
+        socialAccounts={socialAccounts}
         workspace={workspace}
       />
     </>

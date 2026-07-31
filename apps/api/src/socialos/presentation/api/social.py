@@ -25,6 +25,7 @@ from socialos.application.social.use_cases import (
     CreatePublicationCommand,
     CreateWorkspace,
     CreateWorkspaceCommand,
+    EnsureLocalDevelopmentSocialAccounts,
     GetPublicationDetail,
     ListBrandProfiles,
     ListCampaigns,
@@ -33,6 +34,7 @@ from socialos.application.social.use_cases import (
     ListPlatformConnections,
     ListPublications,
     ListSocialAccounts,
+    LocalDevelopmentConnectionError,
     PublishPublicationNow,
     RegisterMediaAsset,
     RegisterMediaAssetCommand,
@@ -205,6 +207,11 @@ class SocialAccountResponse(BaseModel):
 
 class SocialAccountListResponse(BaseModel):
     items: list[SocialAccountResponse]
+
+
+class LocalDevelopmentSocialAccountsResponse(BaseModel):
+    connections: list[PlatformConnectionResponse]
+    accounts: list[SocialAccountResponse]
 
 
 class CreateCampaignRequest(BaseModel):
@@ -533,6 +540,34 @@ async def list_platform_connections(
     connections = await ListPlatformConnections(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
     return PlatformConnectionListResponse(
         items=[PlatformConnectionResponse.from_domain(connection) for connection in connections]
+    )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/platform-connections/local-development",
+    summary="Create idempotent local-only social accounts for development walkthroughs",
+)
+async def ensure_local_development_social_accounts(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> LocalDevelopmentSocialAccountsResponse:
+    settings = get_settings()
+    try:
+        result = await EnsureLocalDevelopmentSocialAccounts(
+            SqlAlchemyUnitOfWork,
+            _cipher(),
+            environment=settings.environment,
+            auth_mode=settings.auth_mode,
+        ).execute(actor, workspace_id)
+    except LocalDevelopmentConnectionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ApplicationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return LocalDevelopmentSocialAccountsResponse(
+        connections=[
+            PlatformConnectionResponse.from_domain(connection) for connection in result.connections
+        ],
+        accounts=[SocialAccountResponse.from_domain(account) for account in result.accounts],
     )
 
 
