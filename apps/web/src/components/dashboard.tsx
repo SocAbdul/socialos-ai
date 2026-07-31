@@ -7,7 +7,6 @@ import {
   Clock3,
   Instagram,
   Linkedin,
-  Menu,
   MoreHorizontal,
   Plus,
   Send,
@@ -25,6 +24,8 @@ import {
   scheduleAction,
 } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
+import { PublicationStatusPoller } from "@/components/publication-status-poller";
+import { MobileNavigation } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import type {
   BrandProfile,
@@ -38,6 +39,7 @@ import type {
   SocialPost,
   Workspace,
 } from "@/lib/api";
+import { groupPublicationAttempts } from "@/lib/publication-attempts";
 
 export function Dashboard({
   brands,
@@ -66,21 +68,24 @@ export function Dashboard({
 }) {
   const recentPosts = posts.slice(0, 3);
   const recentPublications = publications.slice(0, 4);
-  const publishedCount = publications.filter((item) => item.status === "published").length;
-  const scheduledCount = publications.filter((item) => item.status === "scheduled").length;
+  const publishedCount = publications.filter(
+    (item) => item.status === "published",
+  ).length;
+  const scheduledCount = publications.filter(
+    (item) => item.status === "scheduled",
+  ).length;
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f8f8fa] lg:pl-64">
+    <main
+      id="overview"
+      className="min-h-screen scroll-mt-16 overflow-x-hidden bg-[#f8f8fa] lg:pl-64"
+    >
       <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-zinc-200/80 bg-white/85 px-5 backdrop-blur-xl sm:px-8">
         <div className="flex items-center gap-3">
-          <button className="lg:hidden" aria-label="Open navigation">
-            <Menu className="size-5" />
-          </button>
+          <MobileNavigation />
           <div>
             <h1 className="text-sm font-semibold text-zinc-950">Overview</h1>
-            <p className="hidden text-xs text-zinc-400 sm:block">
-              SocialOS AI
-            </p>
+            <p className="hidden text-xs text-zinc-400 sm:block">SocialOS AI</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -98,14 +103,20 @@ export function Dashboard({
 
       <div className="mx-auto max-w-[1440px] px-5 py-7 sm:px-8 sm:py-9">
         {notice ? (
-          <div className="mb-6 rounded-2xl border border-violet-100 bg-violet-50 px-5 py-4 text-sm font-medium text-violet-800">
+          <div
+            aria-live="polite"
+            className="mb-6 rounded-2xl border border-violet-100 bg-violet-50 px-5 py-4 text-sm font-medium text-violet-800"
+            role="status"
+          >
             {notice}
           </div>
         ) : null}
 
         <section className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
-            <p className="mb-1 text-sm font-medium text-violet-600">Good evening, Abdullah</p>
+            <p className="mb-1 text-sm font-medium text-violet-600">
+              Good evening, Abdullah
+            </p>
             <h2 className="max-w-xl text-2xl font-bold tracking-[-0.03em] text-zinc-950 sm:text-3xl">
               Your content engine is moving.
             </h2>
@@ -154,8 +165,12 @@ export function Dashboard({
           <div className="min-w-0 overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,.02)]">
             <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 sm:px-6">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-950">Content performance</h3>
-                <p className="mt-0.5 text-xs text-zinc-400">Last 30 days across all channels</p>
+                <h3 className="text-sm font-semibold text-zinc-950">
+                  Content performance
+                </h3>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  Last 30 days across all channels
+                </p>
               </div>
               <button className="flex items-center gap-1 text-xs font-semibold text-zinc-500 hover:text-zinc-950">
                 View analytics <ChevronRight className="size-3.5" />
@@ -199,7 +214,9 @@ export function Dashboard({
         <section className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_1fr]">
           <div className="min-w-0 rounded-2xl border border-zinc-200/80 bg-white">
             <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 sm:px-6">
-              <h3 className="text-sm font-semibold text-zinc-950">Recent content</h3>
+              <h3 className="text-sm font-semibold text-zinc-950">
+                Recent content
+              </h3>
               <button className="text-xs font-semibold text-violet-600 hover:text-violet-500">
                 View all
               </button>
@@ -207,11 +224,18 @@ export function Dashboard({
             <div className="divide-y divide-zinc-100">
               {recentPublications.length > 0 ? (
                 recentPublications.map((publication) => (
-                  <PublicationRow key={publication.id} publication={publication} />
+                  <PublicationRow
+                    key={publication.id}
+                    publication={publication}
+                  />
                 ))
               ) : recentPosts.length > 0 ? (
                 recentPosts.map((post) => (
-                  <PostRow key={post.id} content={post.content} status={post.status} />
+                  <PostRow
+                    key={post.id}
+                    content={post.content}
+                    status={post.status}
+                  />
                 ))
               ) : (
                 <>
@@ -234,15 +258,25 @@ export function Dashboard({
 
           <div className="min-w-0 rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-zinc-950">Connected channels</h3>
-              <button className="text-xs font-semibold text-violet-600">Manage</button>
+              <h3 className="text-sm font-semibold text-zinc-950">
+                Connected channels
+              </h3>
+              <button className="text-xs font-semibold text-violet-600">
+                Manage
+              </button>
             </div>
             <div className="mt-5 space-y-3">
               {connections.length > 0 ? (
                 connections.map((connection) => (
                   <Channel
                     key={connection.id}
-                    icon={connection.platform === "instagram" ? <Instagram /> : <Send />}
+                    icon={
+                      connection.platform === "instagram" ? (
+                        <Instagram />
+                      ) : (
+                        <Send />
+                      )
+                    }
                     name={connection.external_account_name}
                     detail={`${connection.provider} / ${connection.platform}`}
                     color={
@@ -254,10 +288,30 @@ export function Dashboard({
                 ))
               ) : (
                 <>
-                  <Channel icon={<Instagram />} name="Instagram" detail="Ready for Meta OAuth" color="bg-pink-50 text-pink-600" />
-                  <Channel icon={<Send />} name="Facebook Page" detail="Ready for Meta OAuth" color="bg-blue-50 text-blue-600" />
-                  <Channel icon={<Linkedin />} name="LinkedIn" detail="Planned provider" color="bg-blue-50 text-blue-600" />
-                  <Channel icon={<Youtube />} name="YouTube" detail="Planned provider" color="bg-red-50 text-red-600" />
+                  <Channel
+                    icon={<Instagram />}
+                    name="Instagram"
+                    detail="Ready for Meta OAuth"
+                    color="bg-pink-50 text-pink-600"
+                  />
+                  <Channel
+                    icon={<Send />}
+                    name="Facebook Page"
+                    detail="Ready for Meta OAuth"
+                    color="bg-blue-50 text-blue-600"
+                  />
+                  <Channel
+                    icon={<Linkedin />}
+                    name="LinkedIn"
+                    detail="Planned provider"
+                    color="bg-blue-50 text-blue-600"
+                  />
+                  <Channel
+                    icon={<Youtube />}
+                    name="YouTube"
+                    detail="Planned provider"
+                    color="bg-red-50 text-red-600"
+                  />
                 </>
               )}
             </div>
@@ -304,14 +358,17 @@ function LocalPublishingWalkthrough({
   const localAccounts = socialAccounts.filter((account) =>
     account.external_account_id.startsWith("local-dev-"),
   );
-  const localConnections = connections.filter((connection) => connection.provider === "local-dev");
+  const localConnections = connections.filter(
+    (connection) => connection.provider === "local-dev",
+  );
   const defaultBody =
     "Kinetic Mobiles now offers same-day screen repairs for busy professionals in Valencia. Book online, drop off your phone, and get back to work with a quality-tested display.";
 
   if (!workspace) {
     return (
       <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">
-        The local workspace could not be created. Check the API health endpoint and refresh.
+        The local workspace could not be created. Check the API health endpoint
+        and refresh.
       </div>
     );
   }
@@ -328,8 +385,9 @@ function LocalPublishingWalkthrough({
               Create a real local publication
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-              This flow writes to PostgreSQL, adapts copy with the local AI service, queues work
-              through Redis/Celery, and records publication attempts. It never calls Meta.
+              This flow writes to PostgreSQL, adapts copy with the local AI
+              service, queues work through Redis/Celery, and records publication
+              attempts. It never calls Meta.
             </p>
           </div>
           <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
@@ -340,7 +398,9 @@ function LocalPublishingWalkthrough({
         <div className="mt-5 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-zinc-900">Development social accounts</p>
+              <p className="text-sm font-semibold text-zinc-900">
+                Development social accounts
+              </p>
               <p className="mt-1 text-xs text-zinc-500">
                 {localAccounts.length > 0
                   ? `${localAccounts.length} local test accounts are available.`
@@ -349,16 +409,30 @@ function LocalPublishingWalkthrough({
             </div>
             <form action={ensureLocalDevelopmentAccountsAction}>
               <input name="workspaceId" type="hidden" value={workspace.id} />
-              <SubmitButton variant="outline">
-                {localAccounts.length > 0 ? "Refresh local accounts" : "Create local accounts"}
+              <SubmitButton
+                pendingLabel={
+                  localAccounts.length > 0
+                    ? "Refreshing accounts..."
+                    : "Creating accounts..."
+                }
+                variant="outline"
+              >
+                {localAccounts.length > 0
+                  ? "Refresh local accounts"
+                  : "Create local accounts"}
               </SubmitButton>
             </form>
           </div>
           {localAccounts.length > 0 ? (
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {localAccounts.map((account) => (
-                <div key={account.id} className="rounded-xl border border-zinc-200 bg-white p-3">
-                  <p className="text-xs font-bold text-zinc-900">{account.display_name}</p>
+                <div
+                  key={account.id}
+                  className="rounded-xl border border-zinc-200 bg-white p-3"
+                >
+                  <p className="text-xs font-bold text-zinc-900">
+                    {account.display_name}
+                  </p>
                   <p className="mt-1 text-[11px] text-zinc-500">
                     {account.platform} / test only / no real publishing
                   </p>
@@ -368,7 +442,10 @@ function LocalPublishingWalkthrough({
           ) : null}
         </div>
 
-        <form action={createWalkthroughPublicationAction} className="mt-6 grid gap-5">
+        <form
+          action={createWalkthroughPublicationAction}
+          className="mt-6 grid gap-5"
+        >
           <input name="workspaceId" type="hidden" value={workspace.id} />
           <div className="grid gap-4 md:grid-cols-2">
             <LabelledInput
@@ -428,13 +505,20 @@ function LocalPublishingWalkthrough({
             value="b4b9b02e6f09a9bd760f388b67351e2b1dd3bba6a63c10cf7e5f541d176ad39c"
           />
           <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
-            <input className="mt-1" name="simulateRetryableError" type="checkbox" />
+            <input
+              className="mt-1"
+              name="simulateRetryableError"
+              type="checkbox"
+            />
             <span>
-              Simulate retryable provider error. Use this to verify retry from the publication
-              detail panel.
+              Simulate retryable provider error. Use this to verify retry from
+              the publication detail panel.
             </span>
           </label>
-          <SubmitButton className="w-full sm:w-fit">
+          <SubmitButton
+            className="w-full sm:w-fit"
+            pendingLabel="Adapting and creating..."
+          >
             <Sparkles className="size-4" />
             Adapt and create publication
           </SubmitButton>
@@ -566,10 +650,18 @@ function Metric({
   return (
     <div className="rounded-2xl border border-zinc-200/80 bg-white p-5">
       <div className="flex items-center justify-between">
-        <span className={`grid size-9 place-items-center rounded-xl ${tones[tone]}`}>{icon}</span>
-        <span className="text-[11px] font-semibold text-zinc-400">{change}</span>
+        <span
+          className={`grid size-9 place-items-center rounded-xl ${tones[tone]}`}
+        >
+          {icon}
+        </span>
+        <span className="text-[11px] font-semibold text-zinc-400">
+          {change}
+        </span>
       </div>
-      <p className="mt-5 text-2xl font-bold tracking-tight text-zinc-950">{value}</p>
+      <p className="mt-5 text-2xl font-bold tracking-tight text-zinc-950">
+        {value}
+      </p>
       <p className="mt-1 text-xs font-medium text-zinc-500">{label}</p>
     </div>
   );
@@ -583,7 +675,11 @@ function PerformanceChart() {
           <div key={line} className="border-t border-dashed border-zinc-100" />
         ))}
       </div>
-      <svg viewBox="0 0 700 210" className="absolute inset-0 size-full" preserveAspectRatio="none">
+      <svg
+        viewBox="0 0 700 210"
+        className="absolute inset-0 size-full"
+        preserveAspectRatio="none"
+      >
         <defs>
           <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#8b5cf6" stopOpacity=".22" />
@@ -603,7 +699,11 @@ function PerformanceChart() {
         />
       </svg>
       <div className="absolute inset-x-0 bottom-0 flex justify-between text-[10px] text-zinc-400">
-        <span>Jun 20</span><span>Jun 27</span><span>Jul 04</span><span>Jul 11</span><span>Jul 19</span>
+        <span>Jun 20</span>
+        <span>Jun 27</span>
+        <span>Jul 04</span>
+        <span>Jul 11</span>
+        <span>Jul 19</span>
       </div>
     </div>
   );
@@ -623,12 +723,18 @@ function PostRow({ content, status }: { content: string; status: string }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-zinc-800">{content}</p>
-        <p className="mt-1 text-[11px] text-zinc-400">Instagram / LinkedIn / X</p>
+        <p className="mt-1 text-[11px] text-zinc-400">
+          Instagram / LinkedIn / X
+        </p>
       </div>
-      <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold capitalize sm:block ${statusStyle}`}>
+      <span
+        className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold capitalize sm:block ${statusStyle}`}
+      >
         {status}
       </span>
-      <button aria-label="Post actions"><MoreHorizontal className="size-4 text-zinc-400" /></button>
+      <button aria-label="Post actions">
+        <MoreHorizontal className="size-4 text-zinc-400" />
+      </button>
     </div>
   );
 }
@@ -637,7 +743,8 @@ function PublicationRow({ publication }: { publication: Publication }) {
   const statusStyle =
     publication.status === "published"
       ? "bg-emerald-50 text-emerald-700"
-      : publication.status === "failed_retryable" || publication.status === "failed_permanent"
+      : publication.status === "failed_retryable" ||
+          publication.status === "failed_permanent"
         ? "bg-red-50 text-red-700"
         : publication.status === "scheduled" || publication.status === "queued"
           ? "bg-blue-50 text-blue-700"
@@ -652,36 +759,57 @@ function PublicationRow({ publication }: { publication: Publication }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-800">{publication.caption}</p>
+        <p className="truncate text-sm font-medium text-zinc-800">
+          {publication.caption}
+        </p>
         <p className="mt-1 truncate text-[11px] text-zinc-400">
-          {publication.external_url ?? publication.last_error ?? publication.platform}
+          {publication.external_url ??
+            publication.last_error ??
+            publication.platform}
         </p>
       </div>
-      <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold capitalize sm:block ${statusStyle}`}>
+      <span
+        className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold capitalize sm:block ${statusStyle}`}
+      >
         {publication.status.replace("_", " ")}
       </span>
       {publication.external_url ? (
-        <a aria-label="Open published post" href={publication.external_url} rel="noreferrer" target="_blank">
+        <a
+          aria-label="Open published post"
+          href={publication.external_url}
+          rel="noreferrer"
+          target="_blank"
+        >
           <ArrowUpRight className="size-4 text-zinc-400" />
         </a>
       ) : (
-      <a aria-label="Open publication detail" href={`/?publication=${publication.id}#publication-detail`}>
-        <MoreHorizontal className="size-4 text-zinc-400" />
-      </a>
+        <a
+          aria-label="Open publication detail"
+          href={`/?publication=${publication.id}#publication-detail`}
+        >
+          <MoreHorizontal className="size-4 text-zinc-400" />
+        </a>
       )}
     </div>
   );
 }
 
-function PublicationDiagnostics({ detail }: { detail: PublicationDetail | null }) {
+function PublicationDiagnostics({
+  detail,
+}: {
+  detail: PublicationDetail | null;
+}) {
   if (!detail) {
     return (
       <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-5 sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-950">Publication diagnostics</h3>
+            <h3 className="text-sm font-semibold text-zinc-950">
+              Publication diagnostics
+            </h3>
             <p className="mt-1 text-sm text-zinc-500">
-              Create or publish a post to see delivery attempts, provider errors, and external URLs here.
+              Create or publish a post to see delivery attempts, provider
+              errors, and external URLs here.
             </p>
           </div>
           <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-500">
@@ -693,6 +821,7 @@ function PublicationDiagnostics({ detail }: { detail: PublicationDetail | null }
   }
 
   const latestAttempt = detail.attempts[0] ?? null;
+  const attemptGroups = groupPublicationAttempts(detail.attempts);
   const outcome =
     detail.external_url ??
     detail.last_error ??
@@ -700,23 +829,34 @@ function PublicationDiagnostics({ detail }: { detail: PublicationDetail | null }
     "No provider response recorded yet.";
 
   return (
-    <div id="publication-detail" className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6">
+    <div
+      id="publication-detail"
+      className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-6"
+    >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-zinc-950">Publication diagnostics</h3>
+            <h3 className="text-sm font-semibold text-zinc-950">
+              Publication diagnostics
+            </h3>
             <StatusPill status={detail.status} />
           </div>
-          <p className="mt-2 max-w-3xl truncate text-sm text-zinc-600">{detail.caption}</p>
-          <p className="mt-1 text-xs text-zinc-400">
-            {detail.platform} / {detail.external_publication_id ?? "No external id yet"}
+          <p className="mt-2 max-w-3xl truncate text-sm text-zinc-600">
+            {detail.caption}
           </p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {detail.platform} /{" "}
+            {detail.external_publication_id ?? "No external id yet"}
+          </p>
+          <PublicationStatusPoller status={detail.status} />
         </div>
         <PublicationActions detail={detail} />
       </div>
 
       <div className="mt-5 rounded-xl bg-zinc-50 p-4">
-        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Latest outcome</p>
+        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          Latest outcome
+        </p>
         <p className="mt-2 text-sm text-zinc-700">{outcome}</p>
       </div>
 
@@ -725,25 +865,57 @@ function PublicationDiagnostics({ detail }: { detail: PublicationDetail | null }
           <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
             Attempt history
           </h4>
-          <span className="text-xs text-zinc-400">{detail.attempts.length} attempts</span>
+          <span className="text-xs text-zinc-400">
+            {attemptGroups.length}{" "}
+            {attemptGroups.length === 1 ? "attempt" : "attempts"}
+          </span>
         </div>
-        {detail.attempts.length > 0 ? (
-          <div className="mt-3 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
-            {detail.attempts.slice(0, 5).map((attempt) => (
-              <div key={attempt.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[120px_1fr_auto] sm:items-center">
-                <span className="text-xs font-semibold text-zinc-500">
-                  Attempt {attempt.attempt_number}
-                </span>
-                <span className="truncate text-sm text-zinc-700">
-                  {attempt.error_message ?? attempt.external_publication_id ?? attempt.request_id ?? attempt.provider}
-                </span>
-                <StatusPill status={attempt.status} />
-              </div>
+        {attemptGroups.length > 0 ? (
+          <div className="mt-3 space-y-3" data-testid="attempt-groups">
+            {attemptGroups.map((group) => (
+              <section
+                aria-label={`Attempt ${group.attemptNumber}`}
+                className="overflow-hidden rounded-xl border border-zinc-200"
+                key={group.attemptNumber}
+              >
+                <div className="flex items-center justify-between bg-zinc-50 px-4 py-3">
+                  <h5 className="text-xs font-bold text-zinc-700">
+                    Attempt {group.attemptNumber}
+                  </h5>
+                  <span className="text-[11px] text-zinc-400">
+                    {group.events.length}{" "}
+                    {group.events.length === 1 ? "event" : "events"}
+                  </span>
+                </div>
+                <ol className="divide-y divide-zinc-100">
+                  {group.events.map((event) => (
+                    <li
+                      className="grid min-w-0 gap-2 px-4 py-3 sm:grid-cols-[140px_minmax(0,1fr)_auto] sm:items-center"
+                      key={event.id}
+                    >
+                      <time
+                        className="text-[11px] text-zinc-400"
+                        dateTime={event.created_at}
+                      >
+                        {formatTimestamp(event.created_at)}
+                      </time>
+                      <span className="min-w-0 break-words text-sm text-zinc-700">
+                        {event.error_message ??
+                          event.external_publication_id ??
+                          event.request_id ??
+                          `${event.provider} accepted the event`}
+                      </span>
+                      <StatusPill status={event.status} />
+                    </li>
+                  ))}
+                </ol>
+              </section>
             ))}
           </div>
         ) : (
           <p className="mt-3 rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500">
-            No attempts have been recorded yet. Scheduled or queued publications will appear here after the worker runs.
+            No attempts have been recorded yet. Scheduled or queued publications
+            will appear here after the worker runs.
           </p>
         )}
       </div>
@@ -778,7 +950,7 @@ function PublicationActions({ detail }: { detail: PublicationDetail }) {
       {canPublish ? (
         <form action={publishNowAction}>
           <input name="publicationId" type="hidden" value={detail.id} />
-          <SubmitButton>
+          <SubmitButton pendingLabel="Queueing publication...">
             <Send className="size-4" />
             Publish now
           </SubmitButton>
@@ -787,7 +959,7 @@ function PublicationActions({ detail }: { detail: PublicationDetail }) {
       {canPublish ? (
         <form action={scheduleAction}>
           <input name="publicationId" type="hidden" value={detail.id} />
-          <SubmitButton variant="outline">
+          <SubmitButton pendingLabel="Scheduling..." variant="outline">
             <CalendarClock className="size-4" />
             Schedule
           </SubmitButton>
@@ -796,13 +968,17 @@ function PublicationActions({ detail }: { detail: PublicationDetail }) {
       {canRetry ? (
         <form action={retryAction}>
           <input name="publicationId" type="hidden" value={detail.id} />
-          <SubmitButton variant="outline">Retry</SubmitButton>
+          <SubmitButton pendingLabel="Queueing retry..." variant="outline">
+            Retry
+          </SubmitButton>
         </form>
       ) : null}
       {canCancel ? (
         <form action={cancelAction}>
           <input name="publicationId" type="hidden" value={detail.id} />
-          <SubmitButton variant="ghost">Cancel</SubmitButton>
+          <SubmitButton pendingLabel="Cancelling..." variant="ghost">
+            Cancel
+          </SubmitButton>
         </form>
       ) : null}
     </div>
@@ -821,10 +997,19 @@ function StatusPill({ status }: { status: string }) {
             ? "bg-amber-50 text-amber-700"
             : "bg-zinc-100 text-zinc-600";
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${tone}`}>
+    <span
+      className={`rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${tone}`}
+    >
       {status.replaceAll("_", " ")}
     </span>
   );
+}
+
+function formatTimestamp(value: string): string {
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  }).format(new Date(value));
 }
 
 function Channel({
@@ -840,9 +1025,13 @@ function Channel({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-zinc-100 p-3">
-      <span className={`grid size-9 place-items-center rounded-lg [&>svg]:size-4 ${color}`}>{icon}</span>
+      <span
+        className={`grid size-9 place-items-center rounded-lg [&>svg]:size-4 ${color}`}
+      >
+        {icon}
+      </span>
       <div className="min-w-0 flex-1">
-      <p className="truncate text-xs font-semibold text-zinc-800">{name}</p>
+        <p className="truncate text-xs font-semibold text-zinc-800">{name}</p>
         <p className="mt-0.5 text-[10px] text-zinc-400">{detail}</p>
       </div>
       <span className="size-2 rounded-full bg-emerald-400 ring-4 ring-emerald-50" />
