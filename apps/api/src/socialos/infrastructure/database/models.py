@@ -267,8 +267,36 @@ class OAuthStateModel(UUIDPrimaryKeyMixin, Base):
     provider: Mapped[str] = mapped_column(String(48), nullable=False)
     state_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    connection_intent: Mapped[str] = mapped_column(String(32), nullable=False)
+    channel_nonce: Mapped[str] = mapped_column(String(128), nullable=False)
+    return_to: Mapped[str] = mapped_column(String(255), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MetaOAuthSessionModel(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "meta_oauth_sessions"
+    __table_args__ = (
+        Index("ix_meta_oauth_sessions_workspace_expires", "workspace_id", "expires_at"),
+    )
+
+    session_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    oauth_state_id: Mapped[UUID] = mapped_column(ForeignKey("oauth_states.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(48), nullable=False)
+    connection_intent: Mapped[str] = mapped_column(String(32), nullable=False)
+    channel_nonce: Mapped[str] = mapped_column(String(128), nullable=False)
+    return_to: Mapped[str] = mapped_column(String(255), nullable=False)
+    encrypted_temporary_token: Mapped[str] = mapped_column(Text, nullable=False)
+    candidates: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
+    required_scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    granted_scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    declined_scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

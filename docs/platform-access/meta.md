@@ -4,7 +4,8 @@ Status: IMPLEMENTED_NOT_VERIFIED.
 
 ## Requirements
 
-- Meta developer app with Facebook Login configured.
+- Meta developer app in Development/Unpublished mode with Facebook Login for Business configured.
+- A combined Facebook Login for Business configuration supplied only through `META_LOGIN_CONFIG_ID`; its identifier must never be committed.
 - A Facebook Page managed by the connecting user.
 - For Instagram publishing, an Instagram Business or Creator account connected to that Facebook Page.
 - Publicly reachable image/video URLs for media publishing. S3 plus CloudFront is the intended production path.
@@ -14,13 +15,14 @@ Status: IMPLEMENTED_NOT_VERIFIED.
 
 Initial publishing slice requests:
 
+- `business_management`
 - `pages_show_list`
 - `pages_read_engagement`
 - `pages_manage_posts`
 - `instagram_basic`
 - `instagram_content_publish`
 
-Meta redirects the browser to the configured frontend callback route. The
+These six permissions are fixed in the Meta configuration. SocialOS sends `config_id` and deliberately does not send a `scope` override. Meta redirects the browser to the configured frontend callback route. The
 authenticated frontend posts the returned OAuth `code` and `state` to the
 backend, which exchanges the code for a user token, exchanges that for a
 longer-lived token, reads manageable Pages, then stores Page access tokens
@@ -47,7 +49,8 @@ Meta permissions used for publishing require App Review for public customer use.
 Implemented provider capabilities:
 
 - Facebook Page: text and single image are enabled in this slice.
-- Instagram: single image is enabled in this slice; video/Reels capability is declared and provider code path exists, but production rollout should validate upload processing and status polling before exposing at scale.
+- Instagram: single image only.
+- Video, Reels, Stories, carousels and Facebook video are not exposed.
 
 ## Token Renewal
 
@@ -68,9 +71,11 @@ Not implemented yet. Meta webhooks should be added for connection health, commen
 
 - Neutral `PlatformConnection` model: implemented.
 - `SocialAccount` model for Facebook Page and Instagram professional accounts: implemented.
-- OAuth URL generation: implemented.
+- OAuth URL generation with Facebook Login for Business `config_id`: implemented, not verified against Meta.
 - One-time OAuth state with expiry and workspace/user binding: implemented.
-- OAuth callback and account discovery: implemented.
+- Temporary encrypted OAuth selection sessions, safe candidates and one-use row-locked selection: implemented.
+- Shared Page authorization with Facebook and linked Instagram represented as `SocialAccount` records: implemented.
+- OAuth callback and account discovery: implemented with mocked tests only.
 - Encrypted token storage: implemented.
 - Facebook Page text/image publishing: implemented.
 - Instagram image publishing through media container, `status_code` polling, and publish: implemented.
@@ -78,7 +83,24 @@ Not implemented yet. Meta webhooks should be added for connection health, commen
 - Internal lease/execution-key protection against simultaneous workers: implemented.
 - Uncertain result state for timeout/connection ambiguity: implemented.
 - Full webhook reconciliation: pending.
-- Real Kinetic Mobiles test publication: pending Meta app credentials, compatible account, and approved/testable permissions.
+- Real Kinetic Mobiles authorization and publication: not performed. `IMPLEMENTED_NOT_VERIFIED`.
+
+## Local configuration runbook
+
+Set these values only in the local environment or an approved secret store:
+
+```dotenv
+SOCIAL_PROVIDER=meta
+META_APP_ID=
+META_APP_SECRET=
+META_LOGIN_CONFIG_ID=
+META_REDIRECT_URI=http://localhost:3000/integrations/meta/callback
+META_GRAPH_API_VERSION=v25.0
+```
+
+Meta's current setup UI may display Graph API v26. Keep the API version configurable and retain v25 until a supervised real validation explicitly approves changing it. The OAuth success path supports full-page redirect universally; a desktop popup is only an enhancement and falls back to the same-window flow.
+
+Disconnecting normally means “Disconnect from SocialOS”: local credentials are made unusable, accounts are deactivated and history is preserved. It does not revoke the entire authorization in Meta.
 
 ## Delivery Guarantees
 

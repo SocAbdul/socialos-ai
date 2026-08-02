@@ -249,8 +249,24 @@ class FlowUow:
             external_account_id="17841400000000000",
             external_account_name="Kinetic Mobiles",
             encrypted_credentials="encrypted-test-token",
-            scopes=["instagram_basic", "instagram_content_publish"],
+            scopes=[
+                "business_management",
+                "pages_show_list",
+                "pages_read_engagement",
+                "pages_manage_posts",
+                "instagram_basic",
+                "instagram_content_publish",
+            ],
+            granted_scopes=[
+                "business_management",
+                "pages_show_list",
+                "pages_read_engagement",
+                "pages_manage_posts",
+                "instagram_basic",
+                "instagram_content_publish",
+            ],
             capabilities=capabilities,
+            last_validated_at=datetime.now(UTC),
         )
         account = SocialAccount(
             workspace_id=workspace_id,
@@ -262,6 +278,7 @@ class FlowUow:
             username="kineticmobiles",
             capabilities=capabilities,
             selected=True,
+            last_validated_at=datetime.now(UTC),
         )
         self.platform_connections.items.append(connection)
         self.social_accounts.items.append(account)

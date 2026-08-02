@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,9 +11,7 @@ from socialos.application.common.auth import Actor
 from socialos.application.social.use_cases import (
     AdaptContentForPlatform,
     ApplicationNotFoundError,
-    BuildMetaAuthorizationUrl,
     CancelPublication,
-    CompleteMetaOAuth,
     ConnectionAuthorizationError,
     CreateBrandProfile,
     CreateBrandProfileCommand,
@@ -63,6 +61,14 @@ from socialos.infrastructure.database.session import SqlAlchemyUnitOfWork, sessi
 from socialos.infrastructure.security.oauth_state import OAuthStateError, OAuthStateStore
 from socialos.infrastructure.security.token_cipher import FernetTokenCipher
 from socialos.infrastructure.social.meta import MetaSocialProvider
+from socialos.infrastructure.social.meta.integration import (
+    MetaIntegrationService,
+    MetaSessionError,
+)
+from socialos.infrastructure.social.meta.provider import (
+    META_REQUIRED_SCOPES,
+    MetaPermissionError,
+)
 from socialos.infrastructure.storage.media import build_media_storage
 from socialos.infrastructure.tasks.job_queue import CeleryJobQueue
 from socialos.presentation.api.dependencies import get_actor
@@ -145,6 +151,16 @@ class BrandProfileListResponse(BaseModel):
 
 class AuthorizationUrlResponse(BaseModel):
     url: str
+    channel_nonce: str
+    return_to: str
+
+
+class MetaAuthorizeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    connection_intent: Literal["facebook", "instagram", "combined", "reconnect"]
+    connection_id: UUID | None = None
+    return_to: str = "/integrations"
 
 
 class MetaOAuthCallbackRequest(BaseModel):
@@ -152,6 +168,18 @@ class MetaOAuthCallbackRequest(BaseModel):
 
     code: str = Field(min_length=1)
     state: str = Field(min_length=1)
+
+
+class MetaOAuthCallbackResponse(BaseModel):
+    session_id: str
+    channel_nonce: str
+    return_to: str
+
+
+class MetaSelectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str = Field(min_length=20, max_length=200)
 
 
 class PlatformConnectionResponse(BaseModel):
@@ -495,32 +523,60 @@ async def list_brand_profiles(
     )
 
 
-@router.get(
-    "/workspaces/{workspace_id}/platform-connections/meta/authorize",
-)
-async def meta_authorize(
+@router.get("/workspaces/{workspace_id}/integrations/meta")
+async def meta_integration_status(
     workspace_id: UUID,
     actor: Annotated[Actor, Depends(get_actor)],
-) -> AuthorizationUrlResponse:
+) -> dict[str, object]:
     async with session_factory() as session:
-        state = await OAuthStateStore(session).create(
-            workspace_id=workspace_id,
-            user_id=actor.user_id,
-            provider="meta",
-            redirect_uri=get_settings().meta_redirect_uri,
-        )
-        await session.commit()
-    url = await BuildMetaAuthorizationUrl(_meta_provider()).execute(actor, workspace_id, state)
-    return AuthorizationUrlResponse(url=url)
+        try:
+            return await MetaIntegrationService(session, _meta_provider(), _cipher()).status(
+                actor=actor, workspace_id=workspace_id
+            )
+        except MetaSessionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/workspaces/{workspace_id}/integrations/meta/authorize")
+async def meta_authorize(
+    workspace_id: UUID,
+    request: MetaAuthorizeRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> AuthorizationUrlResponse:
+    try:
+        async with session_factory() as session:
+            service = MetaIntegrationService(session, _meta_provider(), _cipher())
+            await service.ensure_workspace_access(actor=actor, workspace_id=workspace_id)
+            if request.connection_intent == "reconnect":
+                if request.connection_id is None:
+                    raise OAuthStateError("Reconnect requires a connection_id")
+                await service.ensure_connection_access(
+                    actor=actor, connection_id=request.connection_id
+                )
+            creation = await OAuthStateStore(session).create(
+                workspace_id=workspace_id,
+                user_id=actor.user_id,
+                provider="meta",
+                redirect_uri=get_settings().meta_redirect_uri,
+                connection_intent=request.connection_intent,
+                return_to=request.return_to,
+            )
+            await session.commit()
+        url = _meta_provider().authorize(creation.state, sorted(META_REQUIRED_SCOPES))
+    except (OAuthStateError, MetaSessionError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return AuthorizationUrlResponse(
+        url=url, channel_nonce=creation.channel_nonce, return_to=request.return_to
+    )
 
 
 @router.post(
-    "/platform-connections/meta/callback",
+    "/integrations/meta/callback",
 )
 async def meta_callback(
     request: MetaOAuthCallbackRequest,
     actor: Annotated[Actor, Depends(get_actor)],
-) -> PlatformConnectionListResponse:
+) -> MetaOAuthCallbackResponse:
     try:
         async with session_factory() as session:
             record = await OAuthStateStore(session).consume(
@@ -530,17 +586,102 @@ async def meta_callback(
                 redirect_uri=get_settings().meta_redirect_uri,
             )
             await session.commit()
-        workspace_id = record.workspace_id
-        connections = await CompleteMetaOAuth(
-            SqlAlchemyUnitOfWork,
-            _meta_provider(),
-            _cipher(),
-        ).execute(actor, workspace_id, request.code)
-    except (ValueError, ConnectionAuthorizationError, OAuthStateError) as exc:
+            session_id = await MetaIntegrationService(
+                session, _meta_provider(), _cipher()
+            ).create_session(actor=actor, state=record, code=request.code)
+    except (ValueError, ConnectionAuthorizationError, OAuthStateError, MetaPermissionError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return PlatformConnectionListResponse(
-        items=[PlatformConnectionResponse.from_domain(connection) for connection in connections]
+    return MetaOAuthCallbackResponse(
+        session_id=session_id,
+        channel_nonce=record.channel_nonce,
+        return_to=record.return_to,
     )
+
+
+@router.get("/integrations/meta/sessions/{session_id}")
+async def get_meta_session(
+    session_id: str,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> dict[str, object]:
+    async with session_factory() as session:
+        try:
+            item = await MetaIntegrationService(session, _meta_provider(), _cipher()).get_session(
+                actor=actor, public_id=session_id
+            )
+        except MetaSessionError as exc:
+            raise HTTPException(
+                status_code=404, detail="Meta connection session was not found"
+            ) from exc
+        return {
+            "session_id": session_id,
+            "connection_intent": item.connection_intent,
+            "channel_nonce": item.channel_nonce,
+            "return_to": item.return_to,
+            "candidates": item.candidates,
+            "expires_at": item.expires_at,
+            "completed": item.completed_at is not None,
+            "result": item.result if item.completed_at is not None else None,
+        }
+
+
+@router.post("/integrations/meta/sessions/{session_id}/select")
+async def select_meta_session(
+    session_id: str,
+    request: MetaSelectionRequest,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> dict[str, object]:
+    async with session_factory() as session:
+        try:
+            return await MetaIntegrationService(session, _meta_provider(), _cipher()).select(
+                actor=actor, public_id=session_id, candidate_id=request.candidate_id
+            )
+        except MetaSessionError as exc:
+            raise HTTPException(
+                status_code=404, detail="Meta connection session was not found"
+            ) from exc
+
+
+@router.post("/platform-connections/{connection_id}/disconnect", status_code=204)
+async def disconnect_meta_connection(
+    connection_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> None:
+    async with session_factory() as session:
+        try:
+            await MetaIntegrationService(session, _meta_provider(), _cipher()).disconnect(
+                actor=actor, connection_id=connection_id
+            )
+        except MetaSessionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/platform-connections/{connection_id}/validate")
+async def validate_meta_connection(
+    connection_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> dict[str, bool]:
+    async with session_factory() as session:
+        try:
+            valid = await MetaIntegrationService(session, _meta_provider(), _cipher()).validate(
+                actor=actor, connection_id=connection_id
+            )
+        except MetaSessionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"valid": valid}
+
+
+@router.get("/platform-connections/{connection_id}/details")
+async def meta_connection_details(
+    connection_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> dict[str, object]:
+    async with session_factory() as session:
+        try:
+            return await MetaIntegrationService(session, _meta_provider(), _cipher()).details(
+                actor=actor, connection_id=connection_id
+            )
+        except MetaSessionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get(
@@ -565,6 +706,8 @@ async def ensure_local_development_social_accounts(
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> LocalDevelopmentSocialAccountsResponse:
     settings = get_settings()
+    if settings.social_provider != "local-dev":
+        raise HTTPException(status_code=403, detail="Local social accounts are disabled")
     try:
         result = await EnsureLocalDevelopmentSocialAccounts(
             SqlAlchemyUnitOfWork,

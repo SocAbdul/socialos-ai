@@ -16,10 +16,29 @@ class OAuthStateError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class OAuthStateRecord:
+    id: UUID
     workspace_id: UUID
     user_id: str
     provider: str
     redirect_uri: str
+    connection_intent: str
+    channel_nonce: str
+    return_to: str
+
+
+@dataclass(frozen=True, slots=True)
+class OAuthStateCreation:
+    state: str
+    channel_nonce: str
+
+
+ALLOWED_OAUTH_RETURN_PATHS = frozenset({"/integrations"})
+
+
+def validate_oauth_return_to(return_to: str) -> str:
+    if return_to not in ALLOWED_OAUTH_RETURN_PATHS:
+        raise OAuthStateError("OAuth return path is not allowed")
+    return return_to
 
 
 class OAuthStateStore:
@@ -33,9 +52,13 @@ class OAuthStateStore:
         user_id: str,
         provider: str,
         redirect_uri: str,
+        connection_intent: str,
+        return_to: str,
         ttl: timedelta = timedelta(minutes=10),
-    ) -> str:
+    ) -> OAuthStateCreation:
         state = secrets.token_urlsafe(32)
+        channel_nonce = secrets.token_urlsafe(32)
+        safe_return_to = validate_oauth_return_to(return_to)
         now = datetime.now(UTC)
         self._session.add(
             OAuthStateModel(
@@ -43,12 +66,15 @@ class OAuthStateStore:
                 user_id=user_id,
                 provider=provider,
                 redirect_uri=redirect_uri,
+                connection_intent=connection_intent,
+                channel_nonce=channel_nonce,
+                return_to=safe_return_to,
                 state_hash=_hash_state(state),
                 expires_at=now + ttl,
                 created_at=now,
             )
         )
-        return state
+        return OAuthStateCreation(state=state, channel_nonce=channel_nonce)
 
     async def consume(
         self,
@@ -78,10 +104,14 @@ class OAuthStateStore:
             raise OAuthStateError("OAuth state context does not match")
         model.used_at = now
         return OAuthStateRecord(
+            id=model.id,
             workspace_id=model.workspace_id,
             user_id=model.user_id,
             provider=model.provider,
             redirect_uri=model.redirect_uri,
+            connection_intent=model.connection_intent,
+            channel_nonce=model.channel_nonce,
+            return_to=model.return_to,
         )
 
 

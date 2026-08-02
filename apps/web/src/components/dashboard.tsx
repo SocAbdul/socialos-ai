@@ -53,6 +53,7 @@ export function Dashboard({
   publicationDetail,
   publications,
   socialAccounts,
+  socialProvider,
   workspace,
 }: {
   aiCost: string | null;
@@ -66,6 +67,7 @@ export function Dashboard({
   publicationDetail: PublicationDetail | null;
   publications: Publication[];
   socialAccounts: SocialAccount[];
+  socialProvider: "local-dev" | "meta";
   workspace: Workspace | null;
 }) {
   const recentPosts = posts.slice(0, 3);
@@ -336,6 +338,7 @@ export function Dashboard({
             connections={connections}
             mediaAssets={mediaAssets}
             socialAccounts={socialAccounts}
+            socialProvider={socialProvider}
             workspace={workspace}
           />
         </section>
@@ -355,6 +358,7 @@ function LocalPublishingWalkthrough({
   connections,
   mediaAssets,
   socialAccounts,
+  socialProvider,
   workspace,
 }: {
   brands: BrandProfile[];
@@ -363,6 +367,7 @@ function LocalPublishingWalkthrough({
   connections: PlatformConnection[];
   mediaAssets: MediaAsset[];
   socialAccounts: SocialAccount[];
+  socialProvider: "local-dev" | "meta";
   workspace: Workspace | null;
 }) {
   const localAccounts = socialAccounts.filter((account) =>
@@ -371,6 +376,8 @@ function LocalPublishingWalkthrough({
   const localConnections = connections.filter(
     (connection) => connection.provider === "local-dev",
   );
+  const visibleAccounts = socialProvider === "meta" ? socialAccounts.filter((account) => account.active) : localAccounts;
+  const visibleConnections = socialProvider === "meta" ? connections.filter((connection) => connection.provider === "meta") : localConnections;
   if (!workspace) {
     return (
       <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">
@@ -386,18 +393,17 @@ function LocalPublishingWalkthrough({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-600">
-              Local product walkthrough
+              {socialProvider === "meta" ? "Meta publishing" : "Local product walkthrough"}
             </p>
             <h3 className="mt-2 text-xl font-bold tracking-tight text-zinc-950">
-              Create a real local publication
+              {socialProvider === "meta" ? "Create a Meta publication" : "Create a real local publication"}
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-              Adapt your message, choose a test account, and follow the delivery
-              result without publishing to a real social network.
+              Adapt your message, choose a connected account, and follow the delivery result.
             </p>
           </div>
           <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
-            Local simulation
+            {socialProvider === "meta" ? "Official Meta API" : "Local simulation"}
           </span>
         </div>
 
@@ -405,15 +411,15 @@ function LocalPublishingWalkthrough({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-zinc-900">
-                Development social accounts
+                {socialProvider === "meta" ? "Connected Meta accounts" : "Development social accounts"}
               </p>
               <p className="mt-1 text-xs text-zinc-500">
-                {localAccounts.length > 0
-                  ? `${localAccounts.length} local test accounts are available.`
-                  : "Create local Facebook and Instagram test accounts before publishing."}
+                {visibleAccounts.length > 0
+                  ? `${visibleAccounts.length} social accounts are available.`
+                  : socialProvider === "meta" ? "Connect Facebook or Instagram from Connected accounts." : "Create local Facebook and Instagram test accounts before publishing."}
               </p>
             </div>
-            <form action={ensureLocalDevelopmentAccountsAction}>
+            {socialProvider === "local-dev" ? <form action={ensureLocalDevelopmentAccountsAction}>
               <input name="workspaceId" type="hidden" value={workspace.id} />
               <SubmitButton
                 pendingLabel={
@@ -427,11 +433,11 @@ function LocalPublishingWalkthrough({
                   ? "Refresh local accounts"
                   : "Create local accounts"}
               </SubmitButton>
-            </form>
+            </form> : <a className="rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white" href="/integrations">Manage connections</a>}
           </div>
-          {localAccounts.length > 0 ? (
+          {visibleAccounts.length > 0 ? (
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {localAccounts.map((account) => (
+              {visibleAccounts.map((account) => (
                 <div
                   key={account.id}
                   className="rounded-xl border border-zinc-200 bg-white p-3"
@@ -440,7 +446,7 @@ function LocalPublishingWalkthrough({
                     {account.display_name}
                   </p>
                   <p className="mt-1 text-[11px] text-zinc-500">
-                    {account.platform} / test only / no real publishing
+                    {account.platform} / {socialProvider === "meta" ? "official connection" : "test only / no real publishing"}
                   </p>
                 </div>
               ))}
@@ -473,9 +479,9 @@ function LocalPublishingWalkthrough({
           empty="Media is registered locally without S3."
         />
         <InventoryCard
-          label="Local connections"
-          value={localConnections.length}
-          empty="Create local accounts to unlock publishing."
+          label={socialProvider === "meta" ? "Meta connections" : "Local connections"}
+          value={visibleConnections.length}
+          empty={socialProvider === "meta" ? "Connect Meta to unlock publishing." : "Create local accounts to unlock publishing."}
         />
       </div>
     </div>

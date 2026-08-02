@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 Environment = Literal["local", "test", "staging", "production"]
 AuthMode = Literal["development", "clerk"]
 MediaStorageProvider = Literal["local", "s3"]
+SocialProviderMode = Literal["local-dev", "meta"]
 
 _MIN_TOKEN_ENCRYPTION_KEY_LENGTH = 32
 _INSECURE_TOKEN_ENCRYPTION_KEYS = frozenset(
@@ -38,8 +39,10 @@ class Settings(BaseSettings):
     token_encryption_key: str | None = None
     meta_app_id: str | None = None
     meta_app_secret: str | None = None
+    meta_login_config_id: str | None = None
     meta_redirect_uri: str = "http://localhost:3000/integrations/meta/callback"
     meta_graph_api_version: str = "v25.0"
+    social_provider: SocialProviderMode = "local-dev"
     ai_provider: str = "local"
     ai_model: str = "socialos-local-v1"
     media_storage_provider: MediaStorageProvider = "local"
@@ -59,6 +62,7 @@ class Settings(BaseSettings):
         "token_encryption_key",
         "meta_app_id",
         "meta_app_secret",
+        "meta_login_config_id",
         "s3_media_bucket",
         "s3_media_region",
         "s3_media_public_base_url",
