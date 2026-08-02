@@ -38,6 +38,14 @@ def upgrade() -> None:
     op.alter_column("oauth_states", "connection_intent", server_default=None)
     op.alter_column("oauth_states", "channel_nonce", server_default=None)
     op.alter_column("oauth_states", "return_to", server_default=None)
+    op.add_column("oauth_states", sa.Column("target_connection_id", sa.Uuid(), nullable=True))
+    op.create_foreign_key(
+        op.f("fk_oauth_states_target_connection_id_platform_connections"),
+        "oauth_states",
+        "platform_connections",
+        ["target_connection_id"],
+        ["id"],
+    )
 
     op.create_table(
         "meta_oauth_sessions",
@@ -50,6 +58,7 @@ def upgrade() -> None:
         sa.Column("connection_intent", sa.String(length=32), nullable=False),
         sa.Column("channel_nonce", sa.String(length=128), nullable=False),
         sa.Column("return_to", sa.String(length=255), nullable=False),
+        sa.Column("target_connection_id", sa.Uuid(), nullable=True),
         sa.Column("encrypted_temporary_token", sa.Text(), nullable=False),
         sa.Column("candidates", sa.JSON(), nullable=False),
         sa.Column("required_scopes", sa.JSON(), nullable=False),
@@ -63,6 +72,11 @@ def upgrade() -> None:
             ["oauth_state_id"],
             ["oauth_states.id"],
             name=op.f("fk_meta_oauth_sessions_oauth_state_id_oauth_states"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["target_connection_id"],
+            ["platform_connections.id"],
+            name=op.f("fk_meta_oauth_sessions_target_connection_id_platform_connections"),
         ),
         sa.ForeignKeyConstraint(
             ["workspace_id"],
@@ -82,6 +96,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_meta_oauth_sessions_workspace_expires", table_name="meta_oauth_sessions")
     op.drop_table("meta_oauth_sessions")
+    op.drop_constraint(
+        op.f("fk_oauth_states_target_connection_id_platform_connections"),
+        "oauth_states",
+        type_="foreignkey",
+    )
+    op.drop_column("oauth_states", "target_connection_id")
     op.drop_column("oauth_states", "return_to")
     op.drop_column("oauth_states", "channel_nonce")
     op.drop_column("oauth_states", "connection_intent")

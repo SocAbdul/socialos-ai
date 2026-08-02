@@ -3,6 +3,7 @@ from typing import cast
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from socialos.application.common.auth import Actor, OrganizationRole
@@ -82,3 +83,83 @@ def test_oauth_return_path_rejects_everything_outside_exact_allowlist(unsafe: st
 
 def test_oauth_return_path_accepts_integrations_only() -> None:
     assert validate_oauth_return_to("/integrations") == "/integrations"
+
+
+@pytest.mark.asyncio
+async def test_connection_validation_checks_permissions_page_tasks_and_instagram() -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path.endswith("/me/permissions"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"permission": scope, "status": "granted"}
+                        for scope in (
+                            "business_management",
+                            "pages_show_list",
+                            "pages_read_engagement",
+                            "pages_manage_posts",
+                            "instagram_basic",
+                            "instagram_content_publish",
+                        )
+                    ]
+                },
+            )
+        if request.url.path.endswith("/me/accounts"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "page-a",
+                            "name": "Kinetic Mobiles",
+                            "access_token": "fresh-page-token",
+                            "tasks": ["CREATE_CONTENT"],
+                            "instagram_business_account": {
+                                "id": "ig-a",
+                                "username": "kineticmobiles",
+                                "name": "Kinetic Mobiles",
+                                "account_type": "BUSINESS",
+                            },
+                        }
+                    ]
+                },
+            )
+        if request.url.path.endswith("/me"):
+            return httpx.Response(200, json={"id": "user-a"})
+        return httpx.Response(404, json={"error": {"message": "not found"}})
+
+    settings = Settings(
+        meta_app_id="app-id",
+        meta_app_secret="secret",  # noqa: S106
+        meta_login_config_id="config",
+        token_encryption_key="test-key",  # noqa: S106
+    )
+    cipher = FernetTokenCipher("test-key")
+    provider = MetaSocialProvider(
+        settings,
+        cipher,
+        httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    result = await provider.validate_page_authorization(
+        cipher.encrypt('{"access_token":"page-token","user_access_token":"user-token"}'),
+        "page-a",
+    )
+
+    assert result.candidate is not None
+    assert result.candidate.page_tasks == ["CREATE_CONTENT"]
+    assert result.candidate.instagram is not None
+    assert set(result.granted_scopes) == {
+        "business_management",
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_manage_posts",
+        "instagram_basic",
+        "instagram_content_publish",
+    }
+    assert any(path.endswith("/me") for path in requested)
+    assert any(path.endswith("/me/permissions") for path in requested)
+    assert any(path.endswith("/me/accounts") for path in requested)

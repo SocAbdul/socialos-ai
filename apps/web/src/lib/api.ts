@@ -227,10 +227,17 @@ const metaStatusSchema = z.object({
 });
 
 export type MetaIntegrationStatus = z.infer<typeof metaStatusSchema>;
+export class MetaIntegrationStatusError extends Error {
+  constructor(public readonly kind: "not_found" | "access" | "unavailable", message: string) {
+    super(message);
+    this.name = "MetaIntegrationStatusError";
+  }
+}
 export type MetaConnectionIntent = "facebook" | "instagram" | "combined" | "reconnect";
 const metaSessionSchema = z.object({
   session_id: z.string(), connection_intent: z.string(), channel_nonce: z.string(),
   return_to: z.literal("/integrations"), expires_at: z.string(), completed: z.boolean(),
+  target_connection_id: z.string().uuid().nullable(),
   candidates: z.array(z.object({
     candidate_id: z.string(), page_name: z.string(), masked_page_id: z.string(),
     page_avatar_url: z.string().nullable().optional(), instagram_username: z.string().nullable(),
@@ -267,8 +274,14 @@ export async function getMetaIntegrationStatus(workspaceId: string): Promise<Met
   const response = await fetch(`${API_URL}/workspaces/${workspaceId}/integrations/meta`, {
     headers, cache: "no-store",
   });
-  if (!response.ok) return { connections: [], accounts: [] };
-  return metaStatusSchema.parse(await response.json());
+  if (response.status === 404) throw new MetaIntegrationStatusError("not_found", "Workspace was not found.");
+  if (response.status === 401 || response.status === 403) throw new MetaIntegrationStatusError("access", "You do not have access to these connected accounts.");
+  if (!response.ok) throw new MetaIntegrationStatusError("unavailable", "Connected account status could not be loaded.");
+  try {
+    return metaStatusSchema.parse(await response.json());
+  } catch {
+    throw new MetaIntegrationStatusError("unavailable", "Connected account status returned an invalid response.");
+  }
 }
 
 export async function authorizeMeta(

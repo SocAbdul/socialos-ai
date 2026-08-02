@@ -146,11 +146,26 @@ class MetaAuthorizationExchange:
         granted_scopes: list[str],
         declined_scopes: list[str],
         expires_at: datetime | None,
+        user_access_token: str,
     ) -> None:
         self.candidates = candidates
         self.granted_scopes = granted_scopes
         self.declined_scopes = declined_scopes
         self.expires_at = expires_at
+        self.user_access_token = user_access_token
+
+
+class MetaValidationResult:
+    def __init__(
+        self,
+        *,
+        candidate: MetaPageCandidate | None,
+        granted_scopes: list[str],
+        declined_scopes: list[str],
+    ) -> None:
+        self.candidate = candidate
+        self.granted_scopes = granted_scopes
+        self.declined_scopes = declined_scopes
 
 
 class MetaSocialProvider:
@@ -245,7 +260,46 @@ class MetaSocialProvider:
                 granted_scopes=granted,
                 declined_scopes=declined,
                 expires_at=expires_at,
+                user_access_token=access_token,
             )
+
+    async def validate_page_authorization(
+        self, encrypted_credentials: str, page_id: str
+    ) -> MetaValidationResult:
+        credentials = self._credentials(encrypted_credentials)
+        user_token = credentials.get("user_access_token")
+        if not user_token:
+            return MetaValidationResult(candidate=None, granted_scopes=[], declined_scopes=[])
+        async with self._http_client() as client:
+            await self._get(client, "/me", {"access_token": user_token})
+            permissions = await self._get(client, "/me/permissions", {"access_token": user_token})
+            granted, declined = _permission_sets(permissions)
+            pages = await self._get(
+                client,
+                "/me/accounts",
+                {
+                    "fields": (
+                        "id,name,access_token,tasks,picture{url},"
+                        "instagram_business_account{"
+                        "id,username,name,account_type,profile_picture_url}"
+                    ),
+                    "access_token": user_token,
+                },
+            )
+        page = next(
+            (
+                item
+                for item in cast(list[dict[str, Any]], pages.get("data", []))
+                if str(item.get("id")) == page_id
+            ),
+            None,
+        )
+        candidate = _page_candidate(page) if page and page.get("access_token") else None
+        return MetaValidationResult(
+            candidate=candidate,
+            granted_scopes=granted,
+            declined_scopes=declined,
+        )
 
     async def exchange_code(self, code: str) -> Sequence[OAuthConnectionCandidate]:
         result = await self.exchange_authorization(code)
@@ -549,6 +603,26 @@ def _permission_sets(payload: Mapping[str, object]) -> tuple[list[str], list[str
         elif permission:
             declined.append(permission)
     return sorted(set(granted)), sorted(set(declined))
+
+
+def _page_candidate(page: Mapping[str, Any]) -> MetaPageCandidate:
+    picture = cast(dict[str, Any], page.get("picture") or {})
+    picture_data = cast(dict[str, Any], picture.get("data") or {})
+    raw_instagram = page.get("instagram_business_account")
+    instagram = (
+        {key: str(value) for key, value in raw_instagram.items() if value is not None}
+        if isinstance(raw_instagram, dict)
+        else None
+    )
+    return MetaPageCandidate(
+        candidate_id=secrets.token_urlsafe(24),
+        page_id=str(page["id"]),
+        page_name=str(page.get("name") or page["id"]),
+        page_access_token=str(page["access_token"]),
+        page_avatar_url=str(picture_data["url"]) if picture_data.get("url") else None,
+        page_tasks=[str(task) for task in page.get("tasks", [])],
+        instagram=instagram,
+    )
 
 
 def _mask_identifier(value: str) -> str:

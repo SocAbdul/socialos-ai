@@ -553,6 +553,8 @@ async def meta_authorize(
                 await service.ensure_connection_access(
                     actor=actor, connection_id=request.connection_id
                 )
+            elif request.connection_id is not None:
+                raise OAuthStateError("connection_id is only valid for reconnect")
             creation = await OAuthStateStore(session).create(
                 workspace_id=workspace_id,
                 user_id=actor.user_id,
@@ -560,6 +562,7 @@ async def meta_authorize(
                 redirect_uri=get_settings().meta_redirect_uri,
                 connection_intent=request.connection_intent,
                 return_to=request.return_to,
+                target_connection_id=request.connection_id,
             )
             await session.commit()
         url = _meta_provider().authorize(creation.state, sorted(META_REQUIRED_SCOPES))
@@ -617,6 +620,9 @@ async def get_meta_session(
             "connection_intent": item.connection_intent,
             "channel_nonce": item.channel_nonce,
             "return_to": item.return_to,
+            "target_connection_id": (
+                str(item.target_connection_id) if item.target_connection_id else None
+            ),
             "candidates": item.candidates,
             "expires_at": item.expires_at,
             "completed": item.completed_at is not None,

@@ -24,6 +24,7 @@ class OAuthStateRecord:
     connection_intent: str
     channel_nonce: str
     return_to: str
+    target_connection_id: UUID | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +55,7 @@ class OAuthStateStore:
         redirect_uri: str,
         connection_intent: str,
         return_to: str,
+        target_connection_id: UUID | None = None,
         ttl: timedelta = timedelta(minutes=10),
     ) -> OAuthStateCreation:
         state = secrets.token_urlsafe(32)
@@ -69,6 +71,7 @@ class OAuthStateStore:
                 connection_intent=connection_intent,
                 channel_nonce=channel_nonce,
                 return_to=safe_return_to,
+                target_connection_id=target_connection_id,
                 state_hash=_hash_state(state),
                 expires_at=now + ttl,
                 created_at=now,
@@ -112,6 +115,7 @@ class OAuthStateStore:
             connection_intent=model.connection_intent,
             channel_nonce=model.channel_nonce,
             return_to=model.return_to,
+            target_connection_id=model.target_connection_id,
         )
 
 

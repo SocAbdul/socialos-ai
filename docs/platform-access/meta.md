@@ -74,7 +74,9 @@ Not implemented yet. Meta webhooks should be added for connection health, commen
 - OAuth URL generation with Facebook Login for Business `config_id`: implemented, not verified against Meta.
 - One-time OAuth state with expiry and workspace/user binding: implemented.
 - Temporary encrypted OAuth selection sessions, safe candidates and one-use row-locked selection: implemented.
+- Reconnect sessions are bound to the original `PlatformConnection`; selecting a different Page is rejected.
 - Shared Page authorization with Facebook and linked Instagram represented as `SocialAccount` records: implemented.
+- Connection validation rechecks the user token, six permissions, Page visibility, Page token, publishing tasks and linked professional Instagram account. Removed or changed accounts are deactivated without deleting history.
 - OAuth callback and account discovery: implemented with mocked tests only.
 - Encrypted token storage: implemented.
 - Facebook Page text/image publishing: implemented.

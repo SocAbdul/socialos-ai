@@ -2,6 +2,7 @@ import hashlib
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -28,6 +29,8 @@ from socialos.infrastructure.social.meta.provider import (
 )
 
 SESSION_TTL = timedelta(minutes=10)
+META_PUBLISH_TASKS = frozenset({"CREATE_CONTENT", "MANAGE"})
+INSTAGRAM_ACCOUNT_TYPES = frozenset({"BUSINESS", "CREATOR", "MEDIA_CREATOR"})
 
 
 class MetaSessionError(ValueError):
@@ -62,10 +65,28 @@ class MetaIntegrationService:
                 event_type="permission_changed",
                 safe_metadata={"missing_permissions": missing},
             )
+            await self._session.commit()
             raise MetaPermissionError(
                 "Meta did not grant every permission required for Facebook and Instagram publishing"
             )
-        if not exchange.candidates:
+        target: PlatformConnectionModel | None = None
+        compatibility_intent = state.connection_intent
+        candidates = exchange.candidates
+        if state.connection_intent == "reconnect":
+            if state.target_connection_id is None:
+                raise MetaSessionError("Reconnect target is missing")
+            target = await self._connection_for_actor(
+                actor, state.target_connection_id, for_update=False
+            )
+            if target.workspace_id != state.workspace_id:
+                raise MetaSessionError("Meta connection was not found")
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.page_id == target.external_account_id
+            ]
+            compatibility_intent = "facebook"
+        if not candidates:
             raise MetaSessionError("Meta did not return a compatible Facebook Page")
 
         public_id = secrets.token_urlsafe(32)
@@ -83,9 +104,8 @@ class MetaIntegrationService:
             encrypted_temporary_token=self._cipher.encrypt(
                 json.dumps(
                     {
-                        "candidates": [
-                            candidate.secret_dict() for candidate in exchange.candidates
-                        ],
+                        "candidates": [candidate.secret_dict() for candidate in candidates],
+                        "user_access_token": exchange.user_access_token,
                         "expires_at": (
                             exchange.expires_at.isoformat() if exchange.expires_at else None
                         ),
@@ -93,8 +113,7 @@ class MetaIntegrationService:
                 )
             ),
             candidates=[
-                _candidate_for_intent(candidate.safe_dict(), state.connection_intent)
-                for candidate in exchange.candidates
+                _candidate_for_intent(candidate, compatibility_intent) for candidate in candidates
             ],
             required_scopes=sorted(META_REQUIRED_SCOPES),
             granted_scopes=exchange.granted_scopes,
@@ -102,6 +121,7 @@ class MetaIntegrationService:
             expires_at=now + SESSION_TTL,
             completed_at=None,
             result=None,
+            target_connection_id=target.id if target else None,
             created_at=now,
         )
         self._session.add(model)
@@ -206,7 +226,7 @@ class MetaIntegrationService:
         if model is None:
             raise MetaSessionError("Meta connection session was not found")
         now = datetime.now(UTC)
-        if model.expires_at <= now:
+        if _as_utc(model.expires_at) <= now:
             raise MetaSessionError("Meta connection session has expired")
         if model.completed_at is not None and not allow_completed:
             raise MetaSessionError("Meta connection session was not found")
@@ -238,8 +258,18 @@ class MetaIntegrationService:
         )
         if candidate is None:
             raise MetaSessionError("The selected Meta account is no longer available")
+        if model.connection_intent == "reconnect":
+            if model.target_connection_id is None:
+                raise MetaSessionError("Reconnect target is missing")
+            target = await self._connection_for_actor(
+                actor, model.target_connection_id, for_update=True
+            )
+            if target.workspace_id != model.workspace_id or target.external_account_id != str(
+                candidate["page_id"]
+            ):
+                raise MetaSessionError("The selected Page does not match the reconnect target")
         connection = await self._upsert_connection(model, candidate)
-        account_ids = await self._upsert_accounts(model, connection, candidate)
+        account_ids = await self._reconcile_accounts(model, connection, candidate)
         event_type = "reconnect" if model.connection_intent == "reconnect" else "connect"
         await self._audit(
             workspace_id=model.workspace_id,
@@ -290,13 +320,57 @@ class MetaIntegrationService:
 
     async def validate(self, *, actor: Actor, connection_id: UUID) -> bool:
         connection = await self._connection_for_actor(actor, connection_id, for_update=True)
-        valid = False
-        if _connection_locally_valid(connection):
-            valid = await self._provider.validate_connection(connection.encrypted_credentials)
-        connection.last_validated_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        previous_scopes = set(connection.granted_scopes)
+        try:
+            validation = await self._provider.validate_page_authorization(
+                connection.encrypted_credentials, connection.external_account_id
+            )
+            candidate = validation.candidate
+            connection.granted_scopes = validation.granted_scopes
+            permissions_ok = META_REQUIRED_SCOPES.issubset(validation.granted_scopes)
+            tasks_ok = bool(candidate and META_PUBLISH_TASKS.intersection(candidate.page_tasks))
+            valid = bool(candidate and permissions_ok and tasks_ok)
+            if candidate and valid:
+                credentials = cast(
+                    dict[str, str],
+                    json.loads(self._cipher.decrypt(connection.encrypted_credentials)),
+                )
+                credentials["access_token"] = candidate.page_access_token
+                connection.encrypted_credentials = self._cipher.encrypt(json.dumps(credentials))
+                await self._reconcile_accounts(
+                    SimpleNamespace(
+                        workspace_id=connection.workspace_id,
+                        user_id=actor.user_id,
+                    ),
+                    connection,
+                    candidate.secret_dict(),
+                )
+            else:
+                await self._deactivate_all_accounts(
+                    connection=connection, actor_id=actor.user_id, now=now
+                )
+        except Exception:
+            valid = False
+            await self._deactivate_all_accounts(
+                connection=connection, actor_id=actor.user_id, now=now
+            )
+        connection.last_validated_at = now
         connection.is_valid = valid
         connection.reauth_required = not valid
-        connection.updated_at = datetime.now(UTC)
+        connection.updated_at = now
+        if previous_scopes != set(connection.granted_scopes):
+            await self._audit(
+                workspace_id=connection.workspace_id,
+                actor_id=actor.user_id,
+                event_type="permission_changed",
+                platform_connection_id=connection.id,
+                safe_metadata={
+                    "missing_permissions": sorted(
+                        META_REQUIRED_SCOPES.difference(connection.granted_scopes)
+                    )
+                },
+            )
         if not valid:
             await self._audit(
                 workspace_id=connection.workspace_id,
@@ -305,8 +379,44 @@ class MetaIntegrationService:
                 platform_connection_id=connection.id,
                 safe_metadata={},
             )
+            await self._audit(
+                workspace_id=connection.workspace_id,
+                actor_id=actor.user_id,
+                event_type="reauthorization_required",
+                platform_connection_id=connection.id,
+                safe_metadata={},
+            )
         await self._session.commit()
         return valid
+
+    async def _deactivate_all_accounts(
+        self,
+        *,
+        connection: PlatformConnectionModel,
+        actor_id: str,
+        now: datetime,
+    ) -> None:
+        accounts = (
+            await self._session.scalars(
+                select(SocialAccountModel)
+                .where(SocialAccountModel.platform_connection_id == connection.id)
+                .with_for_update()
+            )
+        ).all()
+        for account in accounts:
+            if not account.active:
+                continue
+            account.active = False
+            account.selected = False
+            account.last_validated_at = now
+            account.updated_at = now
+            await self._audit(
+                workspace_id=connection.workspace_id,
+                actor_id=actor_id,
+                event_type="account_unlinked",
+                platform_connection_id=connection.id,
+                safe_metadata={"platform": account.platform},
+            )
 
     async def _upsert_connection(
         self,
@@ -314,23 +424,45 @@ class MetaIntegrationService:
         candidate: dict[str, Any],
     ) -> PlatformConnectionModel:
         page_id = str(candidate["page_id"])
-        connection = await self._session.scalar(
-            select(PlatformConnectionModel)
-            .where(
-                PlatformConnectionModel.workspace_id == oauth_session.workspace_id,
-                PlatformConnectionModel.provider == "meta",
-                PlatformConnectionModel.external_account_id == page_id,
+        if oauth_session.connection_intent == "reconnect":
+            if oauth_session.target_connection_id is None:
+                raise MetaSessionError("Reconnect target is missing")
+            connection = await self._session.scalar(
+                select(PlatformConnectionModel)
+                .where(
+                    PlatformConnectionModel.id == oauth_session.target_connection_id,
+                    PlatformConnectionModel.workspace_id == oauth_session.workspace_id,
+                    PlatformConnectionModel.provider == "meta",
+                    PlatformConnectionModel.external_account_id == page_id,
+                )
+                .with_for_update()
             )
-            .with_for_update()
-        )
+            if connection is None:
+                raise MetaSessionError("Meta connection was not found")
+        else:
+            connection = await self._session.scalar(
+                select(PlatformConnectionModel)
+                .where(
+                    PlatformConnectionModel.workspace_id == oauth_session.workspace_id,
+                    PlatformConnectionModel.provider == "meta",
+                    PlatformConnectionModel.external_account_id == page_id,
+                )
+                .with_for_update()
+            )
         now = datetime.now(UTC)
-        encrypted = self._cipher.encrypt(
-            json.dumps({"access_token": str(candidate["page_access_token"])})
-        )
-        expires_raw = cast(
+        oauth_payload = cast(
             dict[str, Any],
             json.loads(self._cipher.decrypt(oauth_session.encrypted_temporary_token)),
-        ).get("expires_at")
+        )
+        encrypted = self._cipher.encrypt(
+            json.dumps(
+                {
+                    "access_token": str(candidate["page_access_token"]),
+                    "user_access_token": str(oauth_payload["user_access_token"]),
+                }
+            )
+        )
+        expires_raw = oauth_payload.get("expires_at")
         expires_at = datetime.fromisoformat(str(expires_raw)) if expires_raw else None
         if connection is None:
             connection = PlatformConnectionModel(
@@ -367,13 +499,21 @@ class MetaIntegrationService:
             connection.updated_at = now
         return connection
 
-    async def _upsert_accounts(
+    async def _reconcile_accounts(
         self,
-        oauth_session: MetaOAuthSessionModel,
+        oauth_session: Any,
         connection: PlatformConnectionModel,
         candidate: dict[str, Any],
     ) -> list[UUID]:
         now = datetime.now(UTC)
+        existing = (
+            await self._session.scalars(
+                select(SocialAccountModel)
+                .where(SocialAccountModel.platform_connection_id == connection.id)
+                .with_for_update()
+            )
+        ).all()
+        active_keys: set[tuple[str, str]] = set()
         page = await self._upsert_account(
             workspace_id=oauth_session.workspace_id,
             connection_id=connection.id,
@@ -389,10 +529,16 @@ class MetaIntegrationService:
             },
             parent_account_id=None,
             now=now,
+            actor_id=oauth_session.user_id,
         )
         ids = [page.id]
+        active_keys.add(("facebook", str(candidate["page_id"])))
         instagram = candidate.get("instagram")
-        if isinstance(instagram, dict) and instagram.get("id"):
+        if (
+            isinstance(instagram, dict)
+            and instagram.get("id")
+            and str(instagram.get("account_type", "")).upper() in INSTAGRAM_ACCOUNT_TYPES
+        ):
             account = await self._upsert_account(
                 workspace_id=oauth_session.workspace_id,
                 connection_id=connection.id,
@@ -411,8 +557,25 @@ class MetaIntegrationService:
                 },
                 parent_account_id=page.id,
                 now=now,
+                actor_id=oauth_session.user_id,
             )
             ids.append(account.id)
+            active_keys.add(("instagram", str(instagram["id"])))
+        for account in existing:
+            if (
+                account.platform,
+                account.external_account_id,
+            ) not in active_keys and account.active:
+                account.active = False
+                account.selected = False
+                account.updated_at = now
+                await self._audit(
+                    workspace_id=oauth_session.workspace_id,
+                    actor_id=oauth_session.user_id,
+                    event_type="account_unlinked",
+                    platform_connection_id=connection.id,
+                    safe_metadata={"platform": account.platform},
+                )
         return ids
 
     async def _upsert_account(
@@ -429,6 +592,7 @@ class MetaIntegrationService:
         safe_metadata: dict[str, object],
         parent_account_id: UUID | None,
         now: datetime,
+        actor_id: str,
     ) -> SocialAccountModel:
         account = await self._session.scalar(
             select(SocialAccountModel)
@@ -460,6 +624,7 @@ class MetaIntegrationService:
             )
             self._session.add(account)
         else:
+            was_inactive = not account.active
             account.parent_account_id = parent_account_id
             account.display_name = display_name
             account.username = username
@@ -469,6 +634,14 @@ class MetaIntegrationService:
             account.active = True
             account.last_validated_at = now
             account.updated_at = now
+            if was_inactive:
+                await self._audit(
+                    workspace_id=workspace_id,
+                    actor_id=actor_id,
+                    event_type="account_reactivated",
+                    platform_connection_id=connection_id,
+                    safe_metadata={"platform": platform},
+                )
         return account
 
     async def _connection_for_actor(
@@ -526,14 +699,29 @@ def _hash(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def _candidate_for_intent(candidate: dict[str, object], intent: str) -> dict[str, object]:
-    if intent == "facebook" and not candidate.get("compatible"):
-        return {
-            **candidate,
-            "compatible": True,
-            "compatibility_message": "Facebook Page is available.",
-        }
-    return candidate
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _candidate_for_intent(candidate: Any, intent: str) -> dict[str, object]:
+    safe = candidate.safe_dict()
+    tasks_ok = bool(META_PUBLISH_TASKS.intersection(candidate.page_tasks))
+    instagram = candidate.instagram
+    instagram_ok = bool(
+        instagram
+        and instagram.get("id")
+        and str(instagram.get("account_type", "")).upper() in INSTAGRAM_ACCOUNT_TYPES
+    )
+    compatible = tasks_ok and (intent == "facebook" or instagram_ok)
+    if not tasks_ok:
+        message = "This Page does not grant content publishing access."
+    elif intent != "facebook" and not instagram_ok:
+        message = "A compatible Business or Creator Instagram account is required."
+    elif instagram_ok:
+        message = "Facebook Page and professional Instagram account are available."
+    else:
+        message = "Facebook Page is available."
+    return {**safe, "compatible": compatible, "compatibility_message": message}
 
 
 def _connection_locally_valid(connection: PlatformConnectionModel) -> bool:
@@ -541,7 +729,7 @@ def _connection_locally_valid(connection: PlatformConnectionModel) -> bool:
         connection.is_valid
         and not connection.reauth_required
         and connection.revoked_at is None
-        and (connection.expires_at is None or connection.expires_at > datetime.now(UTC))
+        and (connection.expires_at is None or _as_utc(connection.expires_at) > datetime.now(UTC))
         and META_REQUIRED_SCOPES.issubset(connection.granted_scopes)
     )
 
@@ -551,7 +739,7 @@ def _connection_state(connection: PlatformConnectionModel) -> str:
         return "disconnected"
     if connection.reauth_required:
         return "reauth_required"
-    if connection.expires_at is not None and connection.expires_at <= datetime.now(UTC):
+    if connection.expires_at is not None and _as_utc(connection.expires_at) <= datetime.now(UTC):
         return "expired"
     if not META_REQUIRED_SCOPES.issubset(connection.granted_scopes):
         return "permission_missing"

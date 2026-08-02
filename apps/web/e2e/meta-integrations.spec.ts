@@ -15,3 +15,27 @@ test("Meta integrations have no horizontal overflow on mobile", async ({ page },
   const dimensions = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(dimensions.scroll).toBe(dimensions.client);
 });
+
+test("blocked popup offers a fresh same-window continuation", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-390", "Mobile uses full-page redirect by design");
+  await page.goto("/integrations");
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    Object.defineProperty(window, "open", { configurable: true, value: () => null });
+  });
+  await page.getByRole("button", { name: "Connect Facebook" }).click();
+  await expect(page.getByRole("button", { name: "Continuar en esta ventana" })).toBeVisible();
+});
+
+test("multiple connections have scoped actions and accessible disconnect confirmation", async ({ page }) => {
+  await page.goto("/integrations?fixture=connected");
+  await expect(page.getByText("Kinetic Mobiles Madrid", { exact: true })).toBeVisible();
+  await expect(page.getByText("Kinetic Mobiles Valencia", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Validate" })).toHaveCount(2);
+  await page.waitForTimeout(250);
+  await page.getByRole("button", { name: "Disconnect from SocialOS" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Desconectar de SocialOS" });
+  await expect(dialog).toContainText("Las publicaciones anteriores permanecerán en tu historial");
+  await expect(dialog.getByRole("button", { name: "Cancelar" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Desconectar de SocialOS" })).toBeVisible();
+});

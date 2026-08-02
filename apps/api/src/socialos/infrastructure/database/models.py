@@ -270,6 +270,9 @@ class OAuthStateModel(UUIDPrimaryKeyMixin, Base):
     connection_intent: Mapped[str] = mapped_column(String(32), nullable=False)
     channel_nonce: Mapped[str] = mapped_column(String(128), nullable=False)
     return_to: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_connection_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("platform_connections.id"), nullable=True
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -289,6 +292,9 @@ class MetaOAuthSessionModel(UUIDPrimaryKeyMixin, Base):
     connection_intent: Mapped[str] = mapped_column(String(32), nullable=False)
     channel_nonce: Mapped[str] = mapped_column(String(128), nullable=False)
     return_to: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_connection_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("platform_connections.id"), nullable=True
+    )
     encrypted_temporary_token: Mapped[str] = mapped_column(Text, nullable=False)
     candidates: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
     required_scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False)
