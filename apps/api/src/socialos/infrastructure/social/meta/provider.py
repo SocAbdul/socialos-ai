@@ -345,20 +345,11 @@ class MetaSocialProvider:
         return candidates
 
     async def refresh_credentials(self, encrypted_credentials: str) -> str:
-        credentials = self._credentials(encrypted_credentials)
-        token = credentials["access_token"]
-        async with self._http_client() as client:
-            refreshed = await self._get(
-                client,
-                "/oauth/access_token",
-                {
-                    "grant_type": "fb_exchange_token",
-                    "client_id": self._settings.meta_app_id,
-                    "client_secret": self._settings.meta_app_secret,
-                    "fb_exchange_token": token,
-                },
-            )
-        return self._cipher.encrypt(json.dumps({"access_token": refreshed["access_token"]}))
+        # A correct renewal needs the target connection so that SocialOS can exchange the
+        # user token, enumerate /me/accounts, and select the refreshed Page token. The
+        # provider port currently supplies credentials only; attempting renewal here
+        # would risk exchanging a Page token and dropping the user token.
+        raise MetaProviderError("Meta credential renewal is not implemented")
 
     async def validate_connection(self, encrypted_credentials: str) -> bool:
         credentials = self._credentials(encrypted_credentials)

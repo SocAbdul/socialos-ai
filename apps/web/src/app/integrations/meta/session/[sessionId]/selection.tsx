@@ -6,6 +6,12 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import type { MetaOAuthSession } from "@/lib/api";
+import {
+  completeMetaSelection,
+  META_OAUTH_BROADCAST_CHANNEL,
+  META_OAUTH_POPUP_NAME,
+  type MetaCompletionMessage,
+} from "@/lib/meta-oauth-client";
 import { selectMetaCandidateAction } from "../../../actions";
 
 export function MetaSelection({ session }: { session: MetaOAuthSession }) {
@@ -17,11 +23,20 @@ export function MetaSelection({ session }: { session: MetaOAuthSession }) {
     setPending(candidateId); setError(null);
     try {
       await selectMetaCandidateAction(session.session_id, candidateId);
-      if (window.opener) {
-        window.opener.postMessage({ type: "socialos:meta-connected", channelNonce: session.channel_nonce }, window.location.origin);
-        window.close();
-      }
-      router.replace(session.return_to);
+      const channel = typeof BroadcastChannel === "undefined"
+        ? null
+        : new BroadcastChannel(META_OAUTH_BROADCAST_CHANNEL);
+      completeMetaSelection({
+        channelNonce: session.channel_nonce,
+        isPopup: window.name === META_OAUTH_POPUP_NAME,
+        hasOpener: Boolean(window.opener && !window.opener.closed),
+        postToOpener: (message: MetaCompletionMessage) =>
+          window.opener?.postMessage(message, window.location.origin),
+        broadcast: (message: MetaCompletionMessage) => channel?.postMessage(message),
+        closePopup: () => window.close(),
+        navigate: () => router.replace(session.return_to),
+      });
+      channel?.close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not connect this Page.");
       setPending(null);

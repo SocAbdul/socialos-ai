@@ -54,7 +54,7 @@ Implemented provider capabilities:
 
 ## Token Renewal
 
-Tokens are encrypted at rest using `TOKEN_ENCRYPTION_KEY`. The provider exposes `refresh_credentials`; production should run a scheduled refresh job before token expiry and mark connections invalid if refresh fails.
+Tokens are encrypted at rest using `TOKEN_ENCRYPTION_KEY`. Scheduled Meta credential renewal remains pending: `refresh_credentials` fails explicitly instead of attempting to exchange a Page token or risking loss of the encrypted user token. A future renewal workflow must receive the target connection, renew the user token, enumerate `/me/accounts`, and persist both refreshed tokens.
 
 ## Webhooks
 

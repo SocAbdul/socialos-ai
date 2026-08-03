@@ -12,7 +12,7 @@ from socialos.application.social.use_cases import BuildMetaAuthorizationUrl
 from socialos.config import Settings
 from socialos.infrastructure.security.oauth_state import OAuthStateError, validate_oauth_return_to
 from socialos.infrastructure.security.token_cipher import FernetTokenCipher
-from socialos.infrastructure.social.meta.provider import MetaSocialProvider
+from socialos.infrastructure.social.meta.provider import MetaProviderError, MetaSocialProvider
 
 
 class AuthorizationProvider:
@@ -83,6 +83,34 @@ def test_oauth_return_path_rejects_everything_outside_exact_allowlist(unsafe: st
 
 def test_oauth_return_path_accepts_integrations_only() -> None:
     assert validate_oauth_return_to("/integrations") == "/integrations"
+
+
+@pytest.mark.asyncio
+async def test_refresh_credentials_fails_before_exchanging_a_page_token() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(500, json={})
+
+    settings = Settings(
+        meta_app_id="app-id",
+        meta_app_secret="secret",  # noqa: S106
+        meta_login_config_id="config",
+        token_encryption_key="test-key",  # noqa: S106
+    )
+    cipher = FernetTokenCipher("test-key")
+    provider = MetaSocialProvider(
+        settings,
+        cipher,
+        httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    encrypted = cipher.encrypt('{"access_token":"page-token","user_access_token":"user-token"}')
+
+    with pytest.raises(MetaProviderError, match="renewal is not implemented"):
+        await provider.refresh_credentials(encrypted)
+
+    assert requests == []
 
 
 @pytest.mark.asyncio

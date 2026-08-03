@@ -64,6 +64,7 @@ from socialos.infrastructure.social.meta import MetaSocialProvider
 from socialos.infrastructure.social.meta.integration import (
     MetaIntegrationService,
     MetaSessionError,
+    MetaValidationTemporaryError,
 )
 from socialos.infrastructure.social.meta.provider import (
     META_REQUIRED_SCOPES,
@@ -673,6 +674,8 @@ async def validate_meta_connection(
             )
         except MetaSessionError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except MetaValidationTemporaryError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return {"valid": valid}
 
 

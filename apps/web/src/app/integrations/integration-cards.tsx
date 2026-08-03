@@ -4,7 +4,14 @@ import { Facebook, Instagram, Loader2, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { isTrustedMetaPopupMessage, shouldOfferPopupContinuation, validateMetaAuthorizationUrl } from "@/lib/meta-oauth-client";
+import {
+  createMetaCompletionGuard,
+  isTrustedMetaPopupMessage,
+  META_OAUTH_BROADCAST_CHANNEL,
+  META_OAUTH_POPUP_NAME,
+  shouldOfferPopupContinuation,
+  validateMetaAuthorizationUrl,
+} from "@/lib/meta-oauth-client";
 import type { MetaConnectionIntent, MetaIntegrationStatus } from "@/lib/api";
 import {
   disconnectMetaAction,
@@ -31,6 +38,7 @@ export function IntegrationCards({
   const channelNonceRef = useRef<string | null>(null);
   const popupRef = useRef<Window | null>(null);
   const closeWatcherRef = useRef<number | null>(null);
+  const completionGuardRef = useRef<((data: unknown) => boolean) | null>(null);
 
   const clearPopupState = useCallback(() => {
     if (closeWatcherRef.current !== null) window.clearInterval(closeWatcherRef.current);
@@ -40,18 +48,30 @@ export function IntegrationCards({
     setPending(null);
   }, []);
 
+  const completeAuthorization = useCallback(() => {
+    popupRef.current?.close();
+    clearPopupState();
+    completionGuardRef.current = null;
+    setContinuation(null);
+    window.location.assign("/integrations");
+  }, [clearPopupState]);
+
   useEffect(() => {
     function receive(event: MessageEvent) {
       if (!isTrustedMetaPopupMessage(event, window.location.origin, popupRef.current, channelNonceRef.current)) return;
-      clearPopupState();
-      window.location.reload();
+      completionGuardRef.current?.(event.data);
     }
+    const channel = typeof BroadcastChannel === "undefined"
+      ? null
+      : new BroadcastChannel(META_OAUTH_BROADCAST_CHANNEL);
+    if (channel) channel.onmessage = (event) => completionGuardRef.current?.(event.data);
     window.addEventListener("message", receive);
     return () => {
       window.removeEventListener("message", receive);
       if (closeWatcherRef.current !== null) window.clearInterval(closeWatcherRef.current);
+      channel?.close();
     };
-  }, [clearPopupState]);
+  }, [completeAuthorization]);
 
   async function requestAuthorization(
     request: PendingAuthorization,
@@ -67,6 +87,10 @@ export function IntegrationCards({
       );
       const safeUrl = validateMetaAuthorizationUrl(result.url);
       channelNonceRef.current = result.channel_nonce;
+      completionGuardRef.current = createMetaCompletionGuard(
+        result.channel_nonce,
+        completeAuthorization,
+      );
       if (mode === "redirect") {
         window.location.assign(safeUrl);
         return;
@@ -106,7 +130,7 @@ export function IntegrationCards({
     }
     const popup = window.open(
       "about:blank",
-      "socialos-meta",
+      META_OAUTH_POPUP_NAME,
       "popup,width=620,height=760",
     );
     popupRef.current = popup;

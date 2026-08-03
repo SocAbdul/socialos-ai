@@ -2,16 +2,20 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from socialos.application.common.auth import Actor, OrganizationRole
 from socialos.infrastructure.database.base import Base
 from socialos.infrastructure.database.models import (
+    ConnectionAuditEventModel,
     OAuthStateModel,
     PlatformConnectionModel,
     SocialAccountModel,
@@ -22,13 +26,16 @@ from socialos.infrastructure.security.token_cipher import FernetTokenCipher
 from socialos.infrastructure.social.meta.integration import (
     MetaIntegrationService,
     MetaSessionError,
+    MetaValidationTemporaryError,
     _candidate_for_intent,
 )
 from socialos.infrastructure.social.meta.provider import (
     META_REQUIRED_SCOPES,
     MetaAuthorizationExchange,
     MetaPageCandidate,
+    MetaProviderError,
     MetaSocialProvider,
+    MetaValidationResult,
 )
 
 
@@ -44,6 +51,18 @@ class ExchangeProvider:
             expires_at=None,
             user_access_token=f"user-token-{code}",
         )
+
+
+class ValidationProvider:
+    def __init__(self, result: MetaValidationResult | Exception) -> None:
+        self.result = result
+
+    async def validate_page_authorization(
+        self, encrypted_credentials: str, page_id: str
+    ) -> MetaValidationResult:
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
 
 
 class CaptureSession:
@@ -157,7 +176,9 @@ async def seed(
         platform="facebook",
         external_account_id="page-a",
         external_account_name="Page A",
-        encrypted_credentials=FernetTokenCipher("test-key").encrypt('{"access_token":"old"}'),
+        encrypted_credentials=FernetTokenCipher("test-key").encrypt(
+            '{"access_token":"old","user_access_token":"user-old"}'
+        ),
         scopes=sorted(META_REQUIRED_SCOPES),
         granted_scopes=sorted(META_REQUIRED_SCOPES),
         capabilities={"supports_text": True},
@@ -172,6 +193,167 @@ async def seed(
     session.add_all([workspace, connection])
     await session.commit()
     return workspace, connection
+
+
+async def seed_account(session: AsyncSession, connection: PlatformConnectionModel) -> None:
+    now = datetime.now(UTC)
+    session.add(
+        SocialAccountModel(
+            id=uuid4(),
+            workspace_id=connection.workspace_id,
+            platform_connection_id=connection.id,
+            parent_account_id=None,
+            platform="facebook",
+            account_type="facebook_page",
+            external_account_id=connection.external_account_id,
+            display_name="Page A",
+            username=None,
+            capabilities={"supports_text": True},
+            selected=True,
+            active=True,
+            safe_metadata={"tasks": ["CREATE_CONTENT"]},
+            last_validated_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    await session.commit()
+
+
+def valid_result(
+    *, scopes: list[str] | None = None, page: bool = True, tasks: bool = True
+) -> MetaValidationResult:
+    item = candidate("page-a", "validation") if page else None
+    if item is not None and not tasks:
+        item.page_tasks = []
+    return MetaValidationResult(
+        candidate=item,
+        granted_scopes=scopes if scopes is not None else sorted(META_REQUIRED_SCOPES),
+        declined_scopes=[],
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [
+        httpx.ReadTimeout("Meta timed out"),
+        MetaProviderError("Meta 500", retryable=True, error_code="2"),
+    ],
+    ids=["timeout", "meta-500"],
+)
+async def test_temporary_validation_failure_preserves_last_known_good_state(
+    database: async_sessionmaker[AsyncSession], failure: Exception
+) -> None:
+    async with database() as session:
+        _, connection = await seed(session)
+        await seed_account(session, connection)
+        service = MetaIntegrationService(
+            session,
+            cast(MetaSocialProvider, ValidationProvider(failure)),
+            FernetTokenCipher("test-key"),
+        )
+
+        with pytest.raises(MetaValidationTemporaryError):
+            await service.validate(
+                actor=Actor("user-a", "org-a", OrganizationRole.ADMIN),
+                connection_id=connection.id,
+            )
+
+        await session.refresh(connection)
+        account = await session.scalar(
+            select(SocialAccountModel).where(
+                SocialAccountModel.platform_connection_id == connection.id
+            )
+        )
+        assert connection.is_valid is True
+        assert connection.reauth_required is False
+        assert set(connection.granted_scopes) == META_REQUIRED_SCOPES
+        assert account is not None and account.active is True
+        audits = (
+            await session.scalars(
+                select(ConnectionAuditEventModel).where(
+                    ConnectionAuditEventModel.platform_connection_id == connection.id
+                )
+            )
+        ).all()
+        assert [item.event_type for item in audits] == ["validation_retryable_failed"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result",
+    [
+        MetaProviderError("Token revoked", error_code="190"),
+        valid_result(scopes=[]),
+        valid_result(page=False),
+        valid_result(tasks=False),
+    ],
+    ids=["token-revoked", "permission-removed", "page-disappeared", "tasks-removed"],
+)
+async def test_definitive_validation_failure_requires_reauthorization(
+    database: async_sessionmaker[AsyncSession], result: MetaValidationResult | Exception
+) -> None:
+    async with database() as session:
+        _, connection = await seed(session)
+        await seed_account(session, connection)
+        service = MetaIntegrationService(
+            session,
+            cast(MetaSocialProvider, ValidationProvider(result)),
+            FernetTokenCipher("test-key"),
+        )
+
+        assert (
+            await service.validate(
+                actor=Actor("user-a", "org-a", OrganizationRole.ADMIN),
+                connection_id=connection.id,
+            )
+            is False
+        )
+        await session.refresh(connection)
+        account = await session.scalar(
+            select(SocialAccountModel).where(
+                SocialAccountModel.platform_connection_id == connection.id
+            )
+        )
+        assert connection.is_valid is False
+        assert connection.reauth_required is True
+        assert account is not None and account.active is False
+
+
+@pytest.mark.asyncio
+async def test_persistence_error_rolls_back_without_changing_connection(
+    database: async_sessionmaker[AsyncSession],
+) -> None:
+    connection_id: UUID
+    async with database() as session:
+        _, connection = await seed(session)
+        await seed_account(session, connection)
+        connection_id = connection.id
+        original_commit = session.commit
+        original_rollback = session.rollback
+        session.commit = AsyncMock(side_effect=SQLAlchemyError("persistence failed"))  # type: ignore[method-assign]
+        session.rollback = AsyncMock(wraps=original_rollback)  # type: ignore[method-assign]
+        service = MetaIntegrationService(
+            session,
+            cast(MetaSocialProvider, ValidationProvider(valid_result())),
+            FernetTokenCipher("test-key"),
+        )
+
+        with pytest.raises(SQLAlchemyError, match="persistence failed"):
+            await service.validate(
+                actor=Actor("user-a", "org-a", OrganizationRole.ADMIN),
+                connection_id=connection_id,
+            )
+        session.rollback.assert_awaited_once()
+        session.commit = original_commit  # type: ignore[method-assign]
+        session.rollback = original_rollback  # type: ignore[method-assign]
+
+    async with database() as verification:
+        stored = await verification.get(PlatformConnectionModel, connection_id)
+        assert stored is not None
+        assert stored.is_valid is True
+        assert stored.reauth_required is False
 
 
 @pytest.mark.asyncio

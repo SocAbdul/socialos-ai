@@ -6,7 +6,10 @@ from types import SimpleNamespace
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+import httpx
+from cryptography.fernet import InvalidToken
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from socialos.application.common.auth import Actor
@@ -25,6 +28,7 @@ from socialos.infrastructure.social.meta.provider import (
     INSTAGRAM_CAPABILITIES,
     META_REQUIRED_SCOPES,
     MetaPermissionError,
+    MetaProviderError,
     MetaSocialProvider,
 )
 
@@ -35,6 +39,14 @@ INSTAGRAM_ACCOUNT_TYPES = frozenset({"BUSINESS", "CREATOR", "MEDIA_CREATOR"})
 
 class MetaSessionError(ValueError):
     """Raised when a temporary Meta OAuth session cannot be used safely."""
+
+
+class MetaValidationTemporaryError(RuntimeError):
+    """Raised when Meta validation can be retried without changing known-good state."""
+
+    def __init__(self, message: str, *, status_code: int = 503) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class MetaIntegrationService:
@@ -327,11 +339,11 @@ class MetaIntegrationService:
                 connection.encrypted_credentials, connection.external_account_id
             )
             candidate = validation.candidate
-            connection.granted_scopes = validation.granted_scopes
             permissions_ok = META_REQUIRED_SCOPES.issubset(validation.granted_scopes)
             tasks_ok = bool(candidate and META_PUBLISH_TASKS.intersection(candidate.page_tasks))
             valid = bool(candidate and permissions_ok and tasks_ok)
             if candidate and valid:
+                connection.granted_scopes = validation.granted_scopes
                 credentials = cast(
                     dict[str, str],
                     json.loads(self._cipher.decrypt(connection.encrypted_credentials)),
@@ -347,14 +359,39 @@ class MetaIntegrationService:
                     candidate.secret_dict(),
                 )
             else:
+                connection.granted_scopes = validation.granted_scopes
                 await self._deactivate_all_accounts(
                     connection=connection, actor_id=actor.user_id, now=now
                 )
-        except Exception:
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            await self._record_temporary_validation_failure(
+                connection=connection, actor_id=actor.user_id, reason="network"
+            )
+            raise MetaValidationTemporaryError(
+                "Meta validation is temporarily unavailable", status_code=503
+            ) from exc
+        except MetaProviderError as exc:
+            if exc.retryable:
+                await self._record_temporary_validation_failure(
+                    connection=connection,
+                    actor_id=actor.user_id,
+                    reason="meta_retryable",
+                    error_code=exc.error_code,
+                )
+                raise MetaValidationTemporaryError(
+                    "Meta validation is temporarily unavailable", status_code=502
+                ) from exc
+            if exc.error_code != "190":
+                await self._session.rollback()
+                raise
             valid = False
+            connection.granted_scopes = []
             await self._deactivate_all_accounts(
                 connection=connection, actor_id=actor.user_id, now=now
             )
+        except (SQLAlchemyError, InvalidToken, json.JSONDecodeError, KeyError, TypeError):
+            await self._session.rollback()
+            raise
         connection.last_validated_at = now
         connection.is_valid = valid
         connection.reauth_required = not valid
@@ -386,8 +423,36 @@ class MetaIntegrationService:
                 platform_connection_id=connection.id,
                 safe_metadata={},
             )
-        await self._session.commit()
+        try:
+            await self._session.commit()
+        except SQLAlchemyError:
+            await self._session.rollback()
+            raise
         return valid
+
+    async def _record_temporary_validation_failure(
+        self,
+        *,
+        connection: PlatformConnectionModel,
+        actor_id: str,
+        reason: str,
+        error_code: str | None = None,
+    ) -> None:
+        safe_metadata: dict[str, object] = {"reason": reason, "retryable": True}
+        if error_code is not None:
+            safe_metadata["error_code"] = error_code
+        await self._audit(
+            workspace_id=connection.workspace_id,
+            actor_id=actor_id,
+            event_type="validation_retryable_failed",
+            platform_connection_id=connection.id,
+            safe_metadata=safe_metadata,
+        )
+        try:
+            await self._session.commit()
+        except SQLAlchemyError:
+            await self._session.rollback()
+            raise
 
     async def _deactivate_all_accounts(
         self,

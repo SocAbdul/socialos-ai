@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { isTrustedMetaPopupMessage, shouldOfferPopupContinuation, validateMetaAuthorizationUrl } from "./meta-oauth-client";
+import {
+  completeMetaSelection,
+  createMetaCompletionGuard,
+  isTrustedMetaPopupMessage,
+  META_OAUTH_COMPLETION_TYPE,
+  shouldOfferPopupContinuation,
+  validateMetaAuthorizationUrl,
+} from "./meta-oauth-client";
 
 const validUrl = "https://www.facebook.com/v25.0/dialog/oauth?client_id=app&redirect_uri=https%3A%2F%2Fapp.test%2Fintegrations%2Fmeta%2Fcallback&state=state&config_id=config&response_type=code";
 
@@ -32,5 +39,45 @@ describe("Meta OAuth browser security", () => {
     expect(shouldOfferPopupContinuation(true, "pending-nonce")).toBe(true);
     expect(shouldOfferPopupContinuation(true, null)).toBe(false);
     expect(shouldOfferPopupContinuation(false, "pending-nonce")).toBe(false);
+  });
+
+  it("completes once through BroadcastChannel when postMessage is not received", () => {
+    let completed = 0;
+    const receive = createMetaCompletionGuard("expected", () => completed += 1);
+    expect(receive({ type: META_OAUTH_COMPLETION_TYPE, channelNonce: "wrong" })).toBe(false);
+    expect(receive({ type: META_OAUTH_COMPLETION_TYPE, channelNonce: "expected" })).toBe(true);
+    expect(receive({ type: META_OAUTH_COMPLETION_TYPE, channelNonce: "expected" })).toBe(false);
+    expect(completed).toBe(1);
+  });
+
+  it.each([true, false])("broadcasts completion with opener available=%s", (hasOpener) => {
+    const actions: string[] = [];
+    const result = completeMetaSelection({
+      channelNonce: "nonce",
+      isPopup: true,
+      hasOpener,
+      postToOpener: () => actions.push("postMessage"),
+      broadcast: () => actions.push("broadcast"),
+      closePopup: () => actions.push("close"),
+      navigate: () => actions.push("navigate"),
+    });
+    expect(result).toBe("popup");
+    expect(actions).toEqual(hasOpener
+      ? ["postMessage", "broadcast", "close"]
+      : ["broadcast", "close"]);
+  });
+
+  it("navigates only when authorization used a full-page redirect", () => {
+    const actions: string[] = [];
+    expect(completeMetaSelection({
+      channelNonce: "nonce",
+      isPopup: false,
+      hasOpener: false,
+      postToOpener: () => actions.push("postMessage"),
+      broadcast: () => actions.push("broadcast"),
+      closePopup: () => actions.push("close"),
+      navigate: () => actions.push("navigate"),
+    })).toBe("redirect");
+    expect(actions).toEqual(["broadcast", "navigate"]);
   });
 });
