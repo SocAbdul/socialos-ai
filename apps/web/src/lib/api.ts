@@ -212,6 +212,42 @@ export type SocialAccount = z.infer<typeof socialAccountSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 
+const metaStatusSchema = z.object({
+  connections: z.array(z.object({
+    id: z.string().uuid(), page_name: z.string(), masked_page_id: z.string(),
+    state: z.string(), last_validated_at: z.string().nullable(),
+  })),
+  accounts: z.array(z.object({
+    id: z.string().uuid(), connection_id: z.string().uuid(),
+    platform: z.enum(["facebook", "instagram"]), display_name: z.string(),
+    username: z.string().nullable(), masked_external_id: z.string(), active: z.boolean(),
+    avatar_url: z.string().nullable().optional(), account_type: z.string().nullable().optional(),
+    parent_page_name: z.string().nullable().optional(),
+  })),
+});
+
+export type MetaIntegrationStatus = z.infer<typeof metaStatusSchema>;
+export class MetaIntegrationStatusError extends Error {
+  constructor(public readonly kind: "not_found" | "access" | "unavailable", message: string) {
+    super(message);
+    this.name = "MetaIntegrationStatusError";
+  }
+}
+export type MetaConnectionIntent = "facebook" | "instagram" | "combined" | "reconnect";
+const metaSessionSchema = z.object({
+  session_id: z.string(), connection_intent: z.string(), channel_nonce: z.string(),
+  return_to: z.literal("/integrations"), expires_at: z.string(), completed: z.boolean(),
+  target_connection_id: z.string().uuid().nullable(),
+  candidates: z.array(z.object({
+    candidate_id: z.string(), page_name: z.string(), masked_page_id: z.string(),
+    page_avatar_url: z.string().nullable().optional(), instagram_username: z.string().nullable(),
+    instagram_display_name: z.string().nullable(), instagram_account_type: z.string().nullable(),
+    instagram_avatar_url: z.string().nullable().optional(), masked_instagram_id: z.string().nullable(),
+    linked_page_name: z.string(), compatible: z.boolean(), compatibility_message: z.string(),
+  })), result: z.record(z.string(), z.unknown()).nullable(),
+});
+export type MetaOAuthSession = z.infer<typeof metaSessionSchema>;
+
 const API_URL =
   process.env.API_INTERNAL_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
@@ -223,6 +259,75 @@ const developmentIdentity = {
   "X-Organization-Id": "org_local_socialos",
   "X-Organization-Role": "org:admin",
 };
+
+async function apiError(response: Response, fallback: string): Promise<string> {
+  const payload: unknown = await response.json().catch(() => null);
+  if (payload && typeof payload === "object" && "detail" in payload) {
+    const detail = (payload as { detail?: unknown }).detail;
+    if (typeof detail === "string") return detail;
+  }
+  return fallback;
+}
+
+export async function getMetaIntegrationStatus(workspaceId: string): Promise<MetaIntegrationStatus> {
+  const headers = await authenticationHeaders();
+  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/integrations/meta`, {
+    headers, cache: "no-store",
+  });
+  if (response.status === 404) throw new MetaIntegrationStatusError("not_found", "Workspace was not found.");
+  if (response.status === 401 || response.status === 403) throw new MetaIntegrationStatusError("access", "You do not have access to these connected accounts.");
+  if (!response.ok) throw new MetaIntegrationStatusError("unavailable", "Connected account status could not be loaded.");
+  try {
+    return metaStatusSchema.parse(await response.json());
+  } catch {
+    throw new MetaIntegrationStatusError("unavailable", "Connected account status returned an invalid response.");
+  }
+}
+
+export async function authorizeMeta(
+  workspaceId: string,
+  connectionIntent: MetaConnectionIntent,
+  connectionId?: string,
+): Promise<{ url: string; channel_nonce: string; return_to: string }> {
+  const headers = await authenticationHeaders();
+  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/integrations/meta/authorize`, {
+    method: "POST", headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ connection_intent: connectionIntent, connection_id: connectionId, return_to: "/integrations" }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(await apiError(response, "Could not start Meta authorization."));
+  return z.object({ url: z.string().url(), channel_nonce: z.string(), return_to: z.literal("/integrations") }).parse(await response.json());
+}
+
+export async function disconnectMeta(connectionId: string): Promise<void> {
+  const headers = await authenticationHeaders();
+  const response = await fetch(`${API_URL}/platform-connections/${connectionId}/disconnect`, { method: "POST", headers, cache: "no-store" });
+  if (!response.ok) throw new Error(await apiError(response, "Could not disconnect the Meta account."));
+}
+
+export async function validateMeta(connectionId: string): Promise<boolean> {
+  const headers = await authenticationHeaders();
+  const response = await fetch(`${API_URL}/platform-connections/${connectionId}/validate`, { method: "POST", headers, cache: "no-store" });
+  if (!response.ok) throw new Error(await apiError(response, "Could not validate the Meta account."));
+  return z.object({ valid: z.boolean() }).parse(await response.json()).valid;
+}
+
+export async function getMetaOAuthSession(sessionId: string): Promise<MetaOAuthSession> {
+  const headers = await authenticationHeaders();
+  const response = await fetch(`${API_URL}/integrations/meta/sessions/${sessionId}`, { headers, cache: "no-store" });
+  if (!response.ok) throw new Error(await apiError(response, "Meta selection session is unavailable."));
+  return metaSessionSchema.parse(await response.json());
+}
+
+export async function selectMetaCandidate(sessionId: string, candidateId: string): Promise<Record<string, unknown>> {
+  const headers = await authenticationHeaders();
+  const response = await fetch(`${API_URL}/integrations/meta/sessions/${sessionId}/select`, {
+    method: "POST", headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ candidate_id: candidateId }), cache: "no-store",
+  });
+  if (!response.ok) throw new Error(await apiError(response, "Could not connect the selected Page."));
+  return z.record(z.string(), z.unknown()).parse(await response.json());
+}
 
 export async function listPosts(): Promise<SocialPost[]> {
   try {

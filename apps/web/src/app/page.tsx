@@ -81,6 +81,7 @@ export default async function Home({
         publicationDetail={publicationDetail}
         publications={publications}
         socialAccounts={socialAccounts}
+        socialProvider={process.env.SOCIAL_PROVIDER === "meta" ? "meta" : "local-dev"}
         workspace={workspace}
       />
     </>

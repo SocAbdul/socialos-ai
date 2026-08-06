@@ -154,7 +154,7 @@ async def test_local_retryable_failure_is_consumed_and_retry_succeeds_once() -> 
     retried = await RetryPublication(
         lambda: cast(SocialUnitOfWork, uow), cast(JobQueue, queue)
     ).execute(make_actor(), publication.id)
-    with pytest.raises(ValueError, match="Only retryable or uncertain"):
+    with pytest.raises(ValueError, match="Only retryable publications"):
         await RetryPublication(lambda: cast(SocialUnitOfWork, uow), cast(JobQueue, queue)).execute(
             make_actor(), publication.id
         )

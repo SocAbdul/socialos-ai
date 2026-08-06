@@ -12,6 +12,7 @@ import {
   Sparkles,
   Users,
   Workflow,
+  Plug,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -22,7 +23,7 @@ import { Button } from "@/components/ui/button";
 type NavigationItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  href?: "#overview" | "#create-post";
+  href?: "#overview" | "#create-post" | "/integrations";
 };
 
 const primary: NavigationItem[] = [
@@ -34,6 +35,7 @@ const primary: NavigationItem[] = [
 ];
 
 const workspace: NavigationItem[] = [
+  { label: "Connected accounts", icon: Plug, href: "/integrations" },
   { label: "Campaigns", icon: Megaphone },
   { label: "Automations", icon: Workflow },
   { label: "Team", icon: Users },
