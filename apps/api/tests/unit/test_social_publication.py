@@ -78,8 +78,24 @@ async def test_publish_job_records_successful_attempt_once() -> None:
         external_account_id="page-1",
         external_account_name="Kinetic Mobiles",
         encrypted_credentials="encrypted",
-        scopes=[],
+        scopes=[
+            "business_management",
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_posts",
+            "instagram_basic",
+            "instagram_content_publish",
+        ],
+        granted_scopes=[
+            "business_management",
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_posts",
+            "instagram_basic",
+            "instagram_content_publish",
+        ],
         capabilities={"supports_text": True},
+        last_validated_at=datetime.now(UTC),
     )
     publication = Publication(
         workspace_id=connection.workspace_id,
@@ -98,6 +114,7 @@ async def test_publish_job_records_successful_attempt_once() -> None:
         external_account_id="page-1",
         display_name="Kinetic Mobiles",
         capabilities={"supports_text": True, "supports_single_image": True},
+        last_validated_at=datetime.now(UTC),
         id=publication.social_account_id,
     )
     uow = InMemoryUow(publication=publication, connection=connection, account=account)
@@ -347,8 +364,24 @@ async def test_instagram_text_only_is_rejected_before_enqueue() -> None:
         external_account_id="ig-1",
         external_account_name="Kinetic Mobiles",
         encrypted_credentials="encrypted",
-        scopes=[],
+        scopes=[
+            "business_management",
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_posts",
+            "instagram_basic",
+            "instagram_content_publish",
+        ],
+        granted_scopes=[
+            "business_management",
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_posts",
+            "instagram_basic",
+            "instagram_content_publish",
+        ],
         capabilities={"supports_text": False},
+        last_validated_at=datetime.now(UTC),
     )
     account = SocialAccount(
         workspace_id=connection.workspace_id,
@@ -358,6 +391,7 @@ async def test_instagram_text_only_is_rejected_before_enqueue() -> None:
         external_account_id="ig-1",
         display_name="Kinetic Mobiles",
         capabilities={"supports_text": False, "supports_single_image": True},
+        last_validated_at=datetime.now(UTC),
     )
     uow = CreatePublicationUow(connection, account)
     actor = Actor(user_id="user_1", organization_id="org_1", role=OrganizationRole.ADMIN)
@@ -385,8 +419,24 @@ def make_ready_facebook_publication() -> tuple[PlatformConnection, SocialAccount
         external_account_id="page-1",
         external_account_name="Kinetic Mobiles",
         encrypted_credentials="encrypted",
-        scopes=[],
+        scopes=[
+            "business_management",
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_posts",
+            "instagram_basic",
+            "instagram_content_publish",
+        ],
+        granted_scopes=[
+            "business_management",
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_posts",
+            "instagram_basic",
+            "instagram_content_publish",
+        ],
         capabilities={"supports_text": True},
+        last_validated_at=datetime.now(UTC),
     )
     publication = Publication(
         workspace_id=connection.workspace_id,
@@ -405,6 +455,7 @@ def make_ready_facebook_publication() -> tuple[PlatformConnection, SocialAccount
         external_account_id="page-1",
         display_name="Kinetic Mobiles",
         capabilities={"supports_text": True, "supports_single_image": True},
+        last_validated_at=datetime.now(UTC),
         id=publication.social_account_id,
     )
     return connection, account, publication

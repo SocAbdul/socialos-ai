@@ -600,6 +600,7 @@ class CreatePublication:
             account = await uow.social_accounts.get(command.social_account_id, command.workspace_id)
             if account is None or account.platform_connection_id != connection.id:
                 raise ApplicationNotFoundError("Social account not found")
+            _validate_publishable_connection(connection, account)
             _validate_publication_capabilities(account, command.caption, command.media_asset_id)
             publication = Publication(
                 workspace_id=command.workspace_id,
@@ -731,11 +732,12 @@ class RetryPublication:
             publication = await uow.publications.get(publication_id, workspace.id)
             if publication is None:
                 raise ApplicationNotFoundError("Publication not found")
-            if publication.status not in {
-                PublicationStatus.FAILED_RETRYABLE,
-                PublicationStatus.UNCERTAIN,
-            }:
-                raise ValueError("Only retryable or uncertain publications can be retried")
+            if publication.status == PublicationStatus.UNCERTAIN:
+                raise ValueError(
+                    "Uncertain publications must be reconciled before another publish attempt"
+                )
+            if publication.status != PublicationStatus.FAILED_RETRYABLE:
+                raise ValueError("Only retryable publications can be retried")
             publication.status = PublicationStatus.QUEUED
             publication.last_error = None
             publication.next_attempt_at = datetime.now(UTC)
@@ -868,6 +870,10 @@ class PublishQueuedPublication:
                 )
                 if account is None:
                     raise _PermanentPublicationError("Social account not found")
+                try:
+                    _validate_publishable_connection(connection, account)
+                except ValueError as exc:
+                    raise _PermanentPublicationError(str(exc)) from exc
                 if publication.media_asset_id:
                     media_asset = await uow.media_assets.get(
                         publication.media_asset_id, publication.workspace_id
@@ -980,6 +986,43 @@ def _input_hash(operation: AIOperation, payload: dict[str, object]) -> str:
 def _backoff(attempt_number: int) -> timedelta:
     seconds = min(900, 2 ** min(attempt_number, 8) * 30)
     return timedelta(seconds=seconds)
+
+
+META_PUBLICATION_SCOPES = frozenset(
+    {
+        "business_management",
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_manage_posts",
+        "instagram_basic",
+        "instagram_content_publish",
+    }
+)
+
+
+def _validate_publishable_connection(
+    connection: PlatformConnection, account: SocialAccount
+) -> None:
+    if not connection.is_valid:
+        raise ValueError("Social connection is not valid; reconnect it before publishing")
+    if connection.reauth_required:
+        raise ValueError("Social connection requires authorization again")
+    if connection.revoked_at is not None:
+        raise ValueError("Social connection is disconnected")
+    if connection.expires_at is not None and connection.expires_at <= datetime.now(UTC):
+        raise ValueError("Social connection token has expired")
+    if not account.active:
+        raise ValueError("Selected social account is inactive")
+    if not account.capabilities:
+        raise ValueError("Selected social account capabilities have not been verified")
+    if connection.provider == "meta" and (
+        connection.last_validated_at is None or account.last_validated_at is None
+    ):
+        raise ValueError("Meta publishing capabilities have not been verified")
+    if connection.provider == "meta" and not META_PUBLICATION_SCOPES.issubset(
+        connection.granted_scopes
+    ):
+        raise ValueError("Meta connection is missing required publishing permissions")
 
 
 def _validate_publication_capabilities(

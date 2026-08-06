@@ -121,8 +121,8 @@ export function WalkthroughForm({ workspaceId }: { workspaceId: string }) {
             id="platform"
             name="platform"
           >
-            <option value="instagram">Instagram local business</option>
-            <option value="facebook">Facebook local page</option>
+            <option value="instagram">Instagram professional</option>
+            <option value="facebook">Facebook Page</option>
           </select>
         </FieldShell>
         <Field
