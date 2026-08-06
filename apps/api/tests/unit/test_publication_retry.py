@@ -32,19 +32,20 @@ async def test_retry_publication_requeues_retryable_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_retry_publication_requeues_uncertain_publication() -> None:
+async def test_retry_publication_blocks_uncertain_until_reconciled() -> None:
     workspace = make_workspace()
     publication = make_publication(workspace.id, PublicationStatus.UNCERTAIN)
     uow = RetryPublicationUow(workspace, publication)
     queue = RecordingJobQueue()
 
-    result = await RetryPublication(
-        lambda: cast(SocialUnitOfWork, uow),
-        cast(JobQueue, queue),
-    ).execute(make_actor(), publication.id)
+    with pytest.raises(ValueError, match="must be reconciled"):
+        await RetryPublication(
+            lambda: cast(SocialUnitOfWork, uow),
+            cast(JobQueue, queue),
+        ).execute(make_actor(), publication.id)
 
-    assert result.status == PublicationStatus.QUEUED
-    assert queue.enqueued_publication_ids == [publication.id]
+    assert publication.status == PublicationStatus.UNCERTAIN
+    assert queue.enqueued_publication_ids == []
 
 
 @pytest.mark.asyncio
@@ -54,7 +55,7 @@ async def test_retry_publication_rejects_non_retryable_state() -> None:
     uow = RetryPublicationUow(workspace, publication)
     queue = RecordingJobQueue()
 
-    with pytest.raises(ValueError, match="Only retryable or uncertain"):
+    with pytest.raises(ValueError, match="Only retryable publications"):
         await RetryPublication(
             lambda: cast(SocialUnitOfWork, uow),
             cast(JobQueue, queue),

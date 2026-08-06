@@ -93,12 +93,13 @@ export default async function MetaCallbackPage({
   }
 
   let failureMessage: string | null = null;
+  let sessionId: string | null = null;
 
   try {
     const headers = await authenticationHeaders();
-    const response = await fetch(`${API_URL}/platform-connections/meta/callback`, {
+    const response = await fetch(`${API_URL}/integrations/meta/callback`, {
       method: "POST",
-      headers,
+      headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({ code, state }),
       cache: "no-store",
     });
@@ -107,6 +108,10 @@ export default async function MetaCallbackPage({
       const payload: unknown = await response.json().catch(() => null);
       failureMessage =
         responseDetail(payload) ?? "The backend rejected the Meta connection.";
+    } else {
+      const payload = (await response.json()) as { session_id?: string };
+      if (!payload.session_id) failureMessage = "The backend did not create a selection session.";
+      else sessionId = payload.session_id;
     }
   } catch (error) {
     failureMessage =
@@ -122,5 +127,7 @@ export default async function MetaCallbackPage({
     );
   }
 
-  redirect("/?meta=connected");
+  if (sessionId) redirect(`/integrations/meta/session/${encodeURIComponent(sessionId)}`);
+
+  redirect("/integrations");
 }

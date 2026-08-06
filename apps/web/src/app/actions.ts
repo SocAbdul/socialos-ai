@@ -114,12 +114,20 @@ export async function createWalkthroughPublicationAction(
   if (!media) return actionFailure("Check the Media Asset URL and try again.");
 
   let accounts = await listSocialAccounts(workspaceId);
-  if (!accounts.some((account) => account.platform === platform)) {
+  if (
+    process.env.SOCIAL_PROVIDER !== "meta" &&
+    !accounts.some((account) => account.platform === platform)
+  ) {
     await ensureLocalDevelopmentSocialAccounts(workspaceId);
     accounts = await listSocialAccounts(workspaceId);
   }
   const account = accounts.find((item) => item.platform === platform);
-  if (!account) return actionFailure("No local social account is available.");
+  if (!account)
+    return actionFailure(
+      process.env.SOCIAL_PROVIDER === "meta"
+        ? "Connect a compatible Meta account before creating this publication."
+        : "No local social account is available.",
+    );
 
   const connections = await listPlatformConnections(workspaceId);
   const connection = connections.find(
@@ -128,7 +136,7 @@ export async function createWalkthroughPublicationAction(
   if (!connection)
     return actionFailure("No local platform connection is available.");
 
-  const caption = simulateRetryableError
+  const caption = simulateRetryableError && process.env.SOCIAL_PROVIDER !== "meta"
     ? `${adaptation.result}\n\n[local-retryable-error]`
     : adaptation.result;
   const publication = await createPublication(workspaceId, {
