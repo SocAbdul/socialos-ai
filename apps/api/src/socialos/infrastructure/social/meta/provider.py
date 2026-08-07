@@ -314,10 +314,14 @@ class MetaSocialProvider:
             client,
             f"/{instagram_id}",
             {
-                "fields": "id,username,name,account_type,profile_picture_url",
+                "fields": "id,username,name,profile_picture_url",
                 "access_token": str(page_token),
             },
         )
+        # The instagram_business_account edge itself establishes that this is a
+        # linked professional account. Graph API configurations do not expose
+        # account_type consistently, so retain a truthful neutral classification.
+        page["instagram_business_account"].setdefault("account_type", "PROFESSIONAL")
 
     async def exchange_code(self, code: str) -> Sequence[OAuthConnectionCandidate]:
         result = await self.exchange_authorization(code)

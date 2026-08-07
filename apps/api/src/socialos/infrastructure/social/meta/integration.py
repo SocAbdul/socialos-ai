@@ -34,7 +34,7 @@ from socialos.infrastructure.social.meta.provider import (
 
 SESSION_TTL = timedelta(minutes=10)
 META_PUBLISH_TASKS = frozenset({"CREATE_CONTENT", "MANAGE"})
-INSTAGRAM_ACCOUNT_TYPES = frozenset({"BUSINESS", "CREATOR", "MEDIA_CREATOR"})
+INSTAGRAM_ACCOUNT_TYPES = frozenset({"BUSINESS", "CREATOR", "MEDIA_CREATOR", "PROFESSIONAL"})
 
 
 class MetaSessionError(ValueError):

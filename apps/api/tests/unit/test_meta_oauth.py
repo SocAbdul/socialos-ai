@@ -156,7 +156,7 @@ async def test_connection_validation_checks_permissions_page_tasks_and_instagram
         if request.url.path.endswith("/ig-a"):
             assert request.url.params["access_token"] == "fresh-page-token"  # noqa: S105
             assert request.url.params["fields"] == (
-                "id,username,name,account_type,profile_picture_url"
+                "id,username,name,profile_picture_url"
             )
             return httpx.Response(
                 200,
@@ -164,7 +164,6 @@ async def test_connection_validation_checks_permissions_page_tasks_and_instagram
                     "id": "ig-a",
                     "username": "kineticmobiles",
                     "name": "Kinetic Mobiles",
-                    "account_type": "BUSINESS",
                 },
             )
         if request.url.path.endswith("/me"):
@@ -191,6 +190,7 @@ async def test_connection_validation_checks_permissions_page_tasks_and_instagram
     assert result.candidate is not None
     assert result.candidate.page_tasks == ["CREATE_CONTENT"]
     assert result.candidate.instagram is not None
+    assert result.candidate.instagram["account_type"] == "PROFESSIONAL"
     assert set(result.granted_scopes) == {
         "business_management",
         "pages_show_list",
