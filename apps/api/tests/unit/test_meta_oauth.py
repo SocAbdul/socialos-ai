@@ -155,9 +155,7 @@ async def test_connection_validation_checks_permissions_page_tasks_and_instagram
             )
         if request.url.path.endswith("/ig-a"):
             assert request.url.params["access_token"] == "fresh-page-token"  # noqa: S105
-            assert request.url.params["fields"] == (
-                "id,username,name,profile_picture_url"
-            )
+            assert request.url.params["fields"] == ("id,username,name,profile_picture_url")
             return httpx.Response(
                 200,
                 json={
