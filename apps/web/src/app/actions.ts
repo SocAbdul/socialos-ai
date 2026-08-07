@@ -19,6 +19,7 @@ import {
   retryPublication,
   schedulePublication,
 } from "@/lib/api";
+import { accountsForProvider } from "@/lib/social-account-selection";
 import {
   type WalkthroughFieldErrors,
   validateWalkthrough,
@@ -121,7 +122,11 @@ export async function createWalkthroughPublicationAction(
     await ensureLocalDevelopmentSocialAccounts(workspaceId);
     accounts = await listSocialAccounts(workspaceId);
   }
-  const account = accounts.find((item) => item.platform === platform);
+  const connections = await listPlatformConnections(workspaceId);
+  const provider = process.env.SOCIAL_PROVIDER === "meta" ? "meta" : "local-dev";
+  const account = accountsForProvider(accounts, connections, provider).find(
+    (item) => item.platform === platform,
+  );
   if (!account)
     return actionFailure(
       process.env.SOCIAL_PROVIDER === "meta"
@@ -129,12 +134,11 @@ export async function createWalkthroughPublicationAction(
         : "No local social account is available.",
     );
 
-  const connections = await listPlatformConnections(workspaceId);
   const connection = connections.find(
     (item) => item.id === account.platform_connection_id,
   );
   if (!connection)
-    return actionFailure("No local platform connection is available.");
+    return actionFailure("No compatible platform connection is available.");
 
   const caption = simulateRetryableError && process.env.SOCIAL_PROVIDER !== "meta"
     ? `${adaptation.result}\n\n[local-retryable-error]`
@@ -171,7 +175,7 @@ export async function publishNowAction(formData: FormData) {
     noticeUrl(
       publicationId,
       publication
-        ? "Publication queued for local worker."
+        ? "Publication queued for delivery."
         : "Publication could not be queued.",
     ),
   );
@@ -200,7 +204,7 @@ export async function retryAction(formData: FormData) {
     noticeUrl(
       publicationId,
       publication
-        ? "Retry queued for local worker."
+        ? "Retry queued for delivery."
         : "Publication cannot be retried now.",
     ),
   );
