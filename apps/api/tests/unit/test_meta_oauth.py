@@ -148,12 +148,23 @@ async def test_connection_validation_checks_permissions_page_tasks_and_instagram
                             "tasks": ["CREATE_CONTENT"],
                             "instagram_business_account": {
                                 "id": "ig-a",
-                                "username": "kineticmobiles",
-                                "name": "Kinetic Mobiles",
-                                "account_type": "BUSINESS",
                             },
                         }
                     ]
+                },
+            )
+        if request.url.path.endswith("/ig-a"):
+            assert request.url.params["access_token"] == "fresh-page-token"  # noqa: S105
+            assert request.url.params["fields"] == (
+                "id,username,name,account_type,profile_picture_url"
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "id": "ig-a",
+                    "username": "kineticmobiles",
+                    "name": "Kinetic Mobiles",
+                    "account_type": "BUSINESS",
                 },
             )
         if request.url.path.endswith("/me"):
@@ -191,3 +202,4 @@ async def test_connection_validation_checks_permissions_page_tasks_and_instagram
     assert any(path.endswith("/me") for path in requested)
     assert any(path.endswith("/me/permissions") for path in requested)
     assert any(path.endswith("/me/accounts") for path in requested)
+    assert any(path.endswith("/ig-a") for path in requested)

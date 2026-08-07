@@ -225,18 +225,17 @@ class MetaSocialProvider:
                 "/me/accounts",
                 {
                     "fields": (
-                        "id,name,access_token,tasks,picture{url},"
-                        "instagram_business_account{"
-                        "id,username,name,account_type,profile_picture_url}"
+                        "id,name,access_token,tasks,picture{url},instagram_business_account{id}"
                     ),
                     "access_token": access_token,
                 },
             )
             candidates: list[MetaPageCandidate] = []
-            for page in cast(list[dict[str, Any]], pages.get("data", [])):
-                picture = cast(dict[str, Any], page.get("picture") or {})
+            for raw_page in cast(list[dict[str, Any]], pages.get("data", [])):
+                await self._populate_instagram_details(client, raw_page)
+                picture = cast(dict[str, Any], raw_page.get("picture") or {})
                 picture_data = cast(dict[str, Any], picture.get("data") or {})
-                raw_instagram = page.get("instagram_business_account")
+                raw_instagram = raw_page.get("instagram_business_account")
                 instagram = (
                     {key: str(value) for key, value in raw_instagram.items() if value is not None}
                     if isinstance(raw_instagram, dict)
@@ -245,13 +244,13 @@ class MetaSocialProvider:
                 candidates.append(
                     MetaPageCandidate(
                         candidate_id=secrets.token_urlsafe(24),
-                        page_id=str(page["id"]),
-                        page_name=str(page.get("name") or page["id"]),
-                        page_access_token=str(page["access_token"]),
+                        page_id=str(raw_page["id"]),
+                        page_name=str(raw_page.get("name") or raw_page["id"]),
+                        page_access_token=str(raw_page["access_token"]),
                         page_avatar_url=(
                             str(picture_data["url"]) if picture_data.get("url") else None
                         ),
-                        page_tasks=[str(task) for task in page.get("tasks", [])],
+                        page_tasks=[str(task) for task in raw_page.get("tasks", [])],
                         instagram=instagram,
                     )
                 )
@@ -279,13 +278,13 @@ class MetaSocialProvider:
                 "/me/accounts",
                 {
                     "fields": (
-                        "id,name,access_token,tasks,picture{url},"
-                        "instagram_business_account{"
-                        "id,username,name,account_type,profile_picture_url}"
+                        "id,name,access_token,tasks,picture{url},instagram_business_account{id}"
                     ),
                     "access_token": user_token,
                 },
             )
+            for raw_page in cast(list[dict[str, Any]], pages.get("data", [])):
+                await self._populate_instagram_details(client, raw_page)
         page = next(
             (
                 item
@@ -299,6 +298,25 @@ class MetaSocialProvider:
             candidate=candidate,
             granted_scopes=granted,
             declined_scopes=declined,
+        )
+
+    async def _populate_instagram_details(
+        self, client: httpx.AsyncClient, page: dict[str, Any]
+    ) -> None:
+        linked = page.get("instagram_business_account")
+        if not isinstance(linked, dict) or not linked.get("id"):
+            return
+        page_token = page.get("access_token")
+        if not page_token:
+            return
+        instagram_id = str(linked["id"])
+        page["instagram_business_account"] = await self._get(
+            client,
+            f"/{instagram_id}",
+            {
+                "fields": "id,username,name,account_type,profile_picture_url",
+                "access_token": str(page_token),
+            },
         )
 
     async def exchange_code(self, code: str) -> Sequence[OAuthConnectionCandidate]:
