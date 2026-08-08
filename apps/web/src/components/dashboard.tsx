@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Youtube,
 } from "lucide-react";
+import Image from "next/image";
 
 import {
   cancelAction,
@@ -239,6 +240,7 @@ export function Dashboard({
                 recentPublications.map((publication) => (
                   <PublicationRow
                     key={publication.id}
+                    media={mediaAssets.find((item) => item.id === publication.media_asset_id)}
                     publication={publication}
                   />
                 ))
@@ -463,7 +465,10 @@ function LocalPublishingWalkthrough({
           ) : null}
         </div>
 
-        <WalkthroughForm workspaceId={workspace.id} />
+        <WalkthroughForm
+          connectedPlatforms={visibleAccounts.map((account) => account.platform)}
+          workspaceId={workspace.id}
+        />
       </div>
 
       <div className="min-w-0 space-y-4">
@@ -635,7 +640,7 @@ function PostRow({ content, status }: { content: string; status: string }) {
   );
 }
 
-function PublicationRow({ publication }: { publication: Publication }) {
+function PublicationRow({ publication, media }: { publication: Publication; media?: MediaAsset }) {
   const statusStyle =
     publication.status === "published"
       ? "bg-emerald-50 text-emerald-700"
@@ -647,8 +652,10 @@ function PublicationRow({ publication }: { publication: Publication }) {
           : "bg-zinc-100 text-zinc-500";
   return (
     <div className="flex items-center gap-4 px-5 py-4 sm:px-6">
-      <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-zinc-100 text-zinc-700">
-        {publication.platform === "instagram" ? (
+      <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-zinc-100 text-zinc-700">
+        {media ? (
+          <Image alt="" className="size-10 object-cover" height={80} src={media.storage_url} unoptimized width={80} />
+        ) : publication.platform === "instagram" ? (
           <Instagram className="size-4" />
         ) : (
           <Send className="size-4" />

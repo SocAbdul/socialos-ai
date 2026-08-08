@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints
 
 from socialos.application.common.auth import Actor
@@ -40,6 +40,8 @@ from socialos.application.social.use_cases import (
     RequestMediaUploadCommand,
     RetryPublication,
     SchedulePublication,
+    UploadMedia,
+    UploadMediaCommand,
 )
 from socialos.config import get_settings
 from socialos.domain.social import (
@@ -70,7 +72,7 @@ from socialos.infrastructure.social.meta.provider import (
     META_REQUIRED_SCOPES,
     MetaPermissionError,
 )
-from socialos.infrastructure.storage.media import build_media_storage
+from socialos.infrastructure.storage.media import HTTPMediaPreflightService, build_media_storage
 from socialos.infrastructure.tasks.job_queue import CeleryJobQueue
 from socialos.presentation.api.dependencies import get_actor
 
@@ -94,6 +96,11 @@ def _cipher() -> FernetTokenCipher:
 
 def _meta_provider() -> MetaSocialProvider:
     return MetaSocialProvider(get_settings(), _cipher())
+
+
+def _media_preflight() -> HTTPMediaPreflightService | None:
+    settings = get_settings()
+    return HTTPMediaPreflightService(settings) if settings.social_provider == "meta" else None
 
 
 class CreateWorkspaceRequest(BaseModel):
@@ -341,6 +348,9 @@ class MediaAssetResponse(BaseModel):
     media_type: MediaType
     storage_url: str
     content_type: str
+    checksum_sha256: str
+    storage_key: str
+    size_bytes: int
 
     @classmethod
     def from_domain(cls, asset: MediaAsset) -> MediaAssetResponse:
@@ -350,6 +360,9 @@ class MediaAssetResponse(BaseModel):
             media_type=asset.media_type,
             storage_url=asset.storage_url,
             content_type=asset.content_type,
+            checksum_sha256=asset.checksum_sha256,
+            storage_key=asset.storage_key,
+            size_bytes=asset.size_bytes,
         )
 
 
@@ -403,6 +416,7 @@ class CreatePublicationRequest(BaseModel):
     platform: Platform
     caption: ContentText
     media_asset_id: UUID | None = None
+    idempotency_key: str | None = Field(default=None, min_length=16, max_length=96)
 
 
 class SchedulePublicationRequest(BaseModel):
@@ -419,6 +433,7 @@ class PublicationResponse(BaseModel):
     social_account_id: UUID
     platform: Platform
     caption: str
+    media_asset_id: UUID | None
     status: str
     scheduled_at: datetime | None
     external_publication_id: str | None
@@ -436,6 +451,7 @@ class PublicationResponse(BaseModel):
             social_account_id=publication.social_account_id,
             platform=publication.platform,
             caption=publication.caption,
+            media_asset_id=publication.media_asset_id,
             status=publication.status.value,
             scheduled_at=publication.scheduled_at,
             external_publication_id=publication.external_publication_id,
@@ -891,6 +907,34 @@ async def list_media_assets(
 
 
 @router.post(
+    "/workspaces/{workspace_id}/media-assets/upload",
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_media_asset(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+    file: Annotated[UploadFile, File()],
+) -> MediaAssetResponse:
+    settings = get_settings()
+    content = await file.read(settings.media_max_upload_bytes + 1)
+    if len(content) > settings.media_max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Image upload exceeds the 15 MB limit")
+    try:
+        asset = await UploadMedia(SqlAlchemyUnitOfWork, build_media_storage(settings)).execute(
+            actor,
+            UploadMediaCommand(
+                workspace_id=workspace_id,
+                filename=file.filename or "",
+                content_type=file.content_type or "",
+                content=content,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return MediaAssetResponse.from_domain(asset)
+
+
+@router.post(
     "/workspaces/{workspace_id}/publications",
     status_code=status.HTTP_201_CREATED,
 )
@@ -910,6 +954,7 @@ async def create_publication(
                 platform=request.platform,
                 caption=request.caption,
                 media_asset_id=request.media_asset_id,
+                idempotency_key=request.idempotency_key,
             ),
         )
     except ApplicationNotFoundError as exc:
@@ -950,9 +995,9 @@ async def schedule_publication(
     request: SchedulePublicationRequest,
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> PublicationResponse:
-    publication = await SchedulePublication(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
-        actor, publication_id, request.run_at
-    )
+    publication = await SchedulePublication(
+        SqlAlchemyUnitOfWork, CeleryJobQueue(), _media_preflight()
+    ).execute(actor, publication_id, request.run_at)
     return PublicationResponse.from_domain(publication)
 
 
@@ -962,9 +1007,9 @@ async def publish_now(
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> PublicationResponse:
     try:
-        publication = await PublishPublicationNow(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
-            actor, publication_id
-        )
+        publication = await PublishPublicationNow(
+            SqlAlchemyUnitOfWork, CeleryJobQueue(), _media_preflight()
+        ).execute(actor, publication_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return PublicationResponse.from_domain(publication)
@@ -976,9 +1021,9 @@ async def retry_publication(
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> PublicationResponse:
     try:
-        publication = await RetryPublication(SqlAlchemyUnitOfWork, CeleryJobQueue()).execute(
-            actor, publication_id
-        )
+        publication = await RetryPublication(
+            SqlAlchemyUnitOfWork, CeleryJobQueue(), _media_preflight()
+        ).execute(actor, publication_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return PublicationResponse.from_domain(publication)

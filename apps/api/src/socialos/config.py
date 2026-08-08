@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
 AuthMode = Literal["development", "clerk"]
-MediaStorageProvider = Literal["local", "s3"]
+MediaStorageProvider = Literal["local", "local-public", "s3"]
 SocialProviderMode = Literal["local-dev", "meta"]
 
 _MIN_TOKEN_ENCRYPTION_KEY_LENGTH = 32
@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     ai_provider: str = "local"
     ai_model: str = "socialos-local-v1"
     media_storage_provider: MediaStorageProvider = "local"
+    local_media_root: str = "/data/public-media"
+    media_public_base_url: str = "https://media.local.socialos.invalid/media"
     media_upload_url_ttl_seconds: int = 900
     media_max_upload_bytes: int = 15 * 1024 * 1024
     s3_media_bucket: str | None = None

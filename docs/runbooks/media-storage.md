@@ -6,14 +6,22 @@ storage, and only the stable public media URL is stored on `MediaAsset`.
 
 ## Local development
 
-Use:
+The zero-cost local preview uses:
 
 ```env
-MEDIA_STORAGE_PROVIDER=local
+MEDIA_STORAGE_PROVIDER=local-public
+LOCAL_MEDIA_ROOT=/data/public-media
+LOCAL_MEDIA_HOST_PATH=./.data/public-media
+MEDIA_PUBLIC_BASE_URL=https://<current-protected-preview-host>/media
 ```
 
-The API returns a non-uploading local contract target so clients can exercise the
-same shape without AWS credentials.
+The dashboard accepts JPEG/PNG files, the API verifies their bytes and writes them
+under an opaque random key in the persistent host mount. PostgreSQL stores only
+the key, checksum, MIME, size and public URL. Configure the reverse proxy to expose
+only `/media/*` without Basic Auth; dashboard and API routes remain protected.
+
+`MEDIA_STORAGE_PROVIDER=local` remains a non-uploading legacy contract used by
+isolated tests. It must not be used for the real local composer.
 
 ## Staging and production
 
@@ -50,6 +58,13 @@ Run `terraform plan` first and do not apply until AWS account, state backend,
 budget alarms and staging DNS are approved.
 
 ## Upload flow
+
+For `local-public`, the client sends multipart data to
+`POST /api/v1/workspaces/{workspace_id}/media-assets/upload`. The API validates
+the actual signature, extension, MIME and size, persists the file and registers
+the `MediaAsset` in one operation.
+
+For S3 deployments:
 
 1. Client calls `POST /api/v1/workspaces/{workspace_id}/media-assets/upload-target`.
 2. API verifies workspace access, content type, size and checksum format.

@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "overrides": {
-    "postcss": "8.5.20",
+    "nanoid": "3.3.18",
+    "postcss": "8.5.26",
     "sharp": "0.35.3"
   },
   "scripts": {

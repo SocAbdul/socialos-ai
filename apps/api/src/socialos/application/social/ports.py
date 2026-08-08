@@ -95,6 +95,15 @@ class MediaUploadTarget:
     max_size_bytes: int
 
 
+@dataclass(frozen=True, slots=True)
+class StoredMedia:
+    storage_key: str
+    public_url: str
+    content_type: str
+    checksum_sha256: str
+    size_bytes: int
+
+
 class WorkspaceRepository(Protocol):
     async def add(self, workspace: Workspace) -> Workspace: ...
 
@@ -153,6 +162,10 @@ class MediaAssetRepository(Protocol):
 
 class PublicationRepository(Protocol):
     async def add(self, publication: Publication) -> Publication: ...
+
+    async def get_by_idempotency_key(
+        self, workspace_id: UUID, idempotency_key: str
+    ) -> Publication | None: ...
 
     async def get(self, publication_id: UUID, workspace_id: UUID) -> Publication | None: ...
 
@@ -271,6 +284,12 @@ class JobQueue(Protocol):
 
 class MediaStorageService(Protocol):
     def create_upload_target(self, request: MediaUploadRequest) -> MediaUploadTarget: ...
+
+    def store(self, request: MediaUploadRequest, content: bytes) -> StoredMedia: ...
+
+
+class MediaPreflightService(Protocol):
+    async def validate(self, media: MediaAsset) -> None: ...
 
 
 class AIContentService(Protocol):

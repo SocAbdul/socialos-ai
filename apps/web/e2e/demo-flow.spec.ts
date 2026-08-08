@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+test.skip(
+  process.env.NEXT_PUBLIC_DEMO_MODE === "false",
+  "Demo repository flow is validated separately from the backend-connected stack.",
+);
+
 test("demo user can adapt, publish, inspect and retry", async ({ page }) => {
   await page.goto("/");
 

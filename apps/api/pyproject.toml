@@ -12,6 +12,7 @@ dependencies = [
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "pydantic-settings>=2.10,<3",
+  "python-multipart>=0.0.20,<1",
   "pyjwt[crypto]>=2.10,<3",
   "sqlalchemy[asyncio]>=2.0.41,<3",
   "structlog>=25.4,<26",

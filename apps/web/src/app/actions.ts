@@ -15,9 +15,9 @@ import {
   listPlatformConnections,
   listSocialAccounts,
   publishPublicationNow,
-  registerMediaAsset,
   retryPublication,
   schedulePublication,
+  uploadMediaAsset,
 } from "@/lib/api";
 import { accountsForProvider } from "@/lib/social-account-selection";
 import {
@@ -71,11 +71,14 @@ export async function createWalkthroughPublicationAction(
     audience,
     brandName,
     campaignName,
-    checksumSha256: checksum,
     contentBody,
-    contentType,
-    mediaUrl,
-    platform,
+    delivery,
+    facebook,
+    facebookCaption,
+    instagram,
+    instagramCaption,
+    mediaFile,
+    submissionId,
     simulateRetryableError,
     voice,
     workspaceId,
@@ -100,65 +103,61 @@ export async function createWalkthroughPublicationAction(
   });
   if (!content) return actionFailure("Content item could not be created.");
 
-  const adaptation = await adaptContentForPlatform(workspaceId, {
-    text: content.body,
-    platform,
-  });
-  if (!adaptation) return actionFailure("Local AI adaptation failed.");
-
-  const media = await registerMediaAsset(workspaceId, {
-    media_type: "image",
-    storage_url: mediaUrl,
-    content_type: contentType,
-    checksum_sha256: checksum,
-  });
-  if (!media) return actionFailure("Check the Media Asset URL and try again.");
+  const media = await uploadMediaAsset(workspaceId, mediaFile);
+  if (!media) return actionFailure("The image could not be uploaded. Check its format and size.");
 
   let accounts = await listSocialAccounts(workspaceId);
   if (
     process.env.SOCIAL_PROVIDER !== "meta" &&
-    !accounts.some((account) => account.platform === platform)
+    !accounts.some((account) => account.platform === "facebook" || account.platform === "instagram")
   ) {
     await ensureLocalDevelopmentSocialAccounts(workspaceId);
     accounts = await listSocialAccounts(workspaceId);
   }
   const connections = await listPlatformConnections(workspaceId);
   const provider = process.env.SOCIAL_PROVIDER === "meta" ? "meta" : "local-dev";
-  const account = accountsForProvider(accounts, connections, provider).find(
-    (item) => item.platform === platform,
+  const selectedPlatforms = [facebook ? "facebook" : null, instagram ? "instagram" : null].filter(
+    (item): item is "facebook" | "instagram" => item !== null,
   );
-  if (!account)
-    return actionFailure(
-      process.env.SOCIAL_PROVIDER === "meta"
-        ? "Connect a compatible Meta account before creating this publication."
-        : "No local social account is available.",
-    );
-
-  const connection = connections.find(
-    (item) => item.id === account.platform_connection_id,
-  );
-  if (!connection)
-    return actionFailure("No compatible platform connection is available.");
-
-  const caption = simulateRetryableError && process.env.SOCIAL_PROVIDER !== "meta"
-    ? `${adaptation.result}\n\n[local-retryable-error]`
-    : adaptation.result;
-  const publication = await createPublication(workspaceId, {
-    content_item_id: content.id,
-    platform_connection_id: connection.id,
-    social_account_id: account.id,
-    platform,
-    caption,
-    media_asset_id: media.id,
-  });
-  if (!publication) return actionFailure("Publication could not be created.");
+  const availableAccounts = accountsForProvider(accounts, connections, provider);
+  const created = [];
+  let aiCost = "0.00";
+  for (const platform of selectedPlatforms) {
+    const account = availableAccounts.find((item) => item.platform === platform);
+    if (!account) return actionFailure(`Connect a compatible ${platform} account first.`);
+    const connection = connections.find((item) => item.id === account.platform_connection_id);
+    if (!connection) return actionFailure(`The ${platform} connection is unavailable.`);
+    const adaptation = await adaptContentForPlatform(workspaceId, { text: content.body, platform });
+    if (!adaptation) return actionFailure(`Local ${platform} adaptation failed.`);
+    aiCost = adaptation.estimated_cost;
+    const editedCaption = platform === "facebook" ? facebookCaption : instagramCaption;
+    let caption = editedCaption || adaptation.result;
+    if (simulateRetryableError && process.env.SOCIAL_PROVIDER !== "meta") {
+      caption = `${caption}\n\n[local-retryable-error]`;
+    }
+    const publication = await createPublication(workspaceId, {
+      content_item_id: content.id,
+      platform_connection_id: connection.id,
+      social_account_id: account.id,
+      platform,
+      caption,
+      media_asset_id: media.id,
+      idempotency_key: `${submissionId}:${platform}`,
+    });
+    if (!publication) return actionFailure(`${platform} publication could not be created.`);
+    const queued = delivery === "now"
+      ? await publishPublicationNow(publication.id)
+      : await schedulePublication(publication.id, new Date(Date.now() + 15 * 60 * 1000).toISOString());
+    if (!queued) return actionFailure(`${platform} publication was created but could not be ${delivery === "now" ? "queued" : "scheduled"}.`);
+    created.push(queued);
+  }
 
   revalidatePath("/");
   redirect(
     noticeUrl(
-      publication.id,
-      "Publication created and ready.",
-      adaptation.estimated_cost,
+      created[0]?.id ?? null,
+      `${created.length} platform publication${created.length === 1 ? "" : "s"} ${delivery === "now" ? "queued" : "scheduled"}.`,
+      aiCost,
     ),
   );
 }
