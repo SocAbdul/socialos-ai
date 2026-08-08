@@ -6,6 +6,7 @@ import { DemoDashboard } from "@/components/demo/demo-dashboard";
 import { Sidebar } from "@/components/sidebar";
 import {
   ensureWorkspace,
+  getProviderCatalog,
   getPublication,
   listBrandProfiles,
   listCampaigns,
@@ -15,6 +16,7 @@ import {
   listPosts,
   listPublications,
   listSocialAccounts,
+  type ProviderCatalog,
 } from "@/lib/api";
 
 export default async function Home({
@@ -45,7 +47,7 @@ export default async function Home({
         listPublications(workspace.id),
       ])
     : [[], []];
-  const [brands, campaigns, contentItems, mediaAssets, socialAccounts] =
+  const [brands, campaigns, contentItems, mediaAssets, socialAccounts, providerCatalog] =
     workspace
       ? await Promise.all([
           listBrandProfiles(workspace.id),
@@ -53,8 +55,9 @@ export default async function Home({
           listContentItems(workspace.id),
           listMediaAssets(workspace.id),
           listSocialAccounts(workspace.id),
+          getProviderCatalog(workspace.id).catch((): ProviderCatalog => ({ items: [] })),
         ])
-      : [[], [], [], [], []];
+      : [[], [], [], [], [], { items: [] }];
   const params = await searchParams;
   const selectedPublication =
     publications.find(
@@ -79,6 +82,7 @@ export default async function Home({
         notice={params?.notice ?? null}
         posts={posts}
         publicationDetail={publicationDetail}
+        providerCatalog={providerCatalog}
         publications={publications}
         socialAccounts={socialAccounts}
         socialProvider={process.env.SOCIAL_PROVIDER === "meta" ? "meta" : "local-dev"}

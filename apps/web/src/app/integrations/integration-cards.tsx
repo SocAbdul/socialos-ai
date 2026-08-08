@@ -1,6 +1,6 @@
 "use client";
 
-import { Facebook, Instagram, Loader2, ShieldCheck } from "lucide-react";
+import { Facebook, Instagram, Linkedin, Loader2, MessageCircle, Music2, ShieldCheck, Youtube } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,8 @@ import {
   shouldOfferPopupContinuation,
   validateMetaAuthorizationUrl,
 } from "@/lib/meta-oauth-client";
-import type { MetaConnectionIntent, MetaIntegrationStatus } from "@/lib/api";
+import type { MetaConnectionIntent, MetaIntegrationStatus, ProviderCatalog } from "@/lib/api";
+import { plannedPlatforms } from "@/lib/provider-catalog";
 import {
   disconnectMetaAction,
   startMetaAuthorization,
@@ -25,9 +26,11 @@ type PendingAuthorization = {
 };
 
 export function IntegrationCards({
+  catalog,
   workspaceId,
   status,
 }: {
+  catalog: ProviderCatalog;
   workspaceId: string;
   status: MetaIntegrationStatus;
 }) {
@@ -164,15 +167,18 @@ export function IntegrationCards({
 
   const facebookConnected = status.accounts.some((item) => item.platform === "facebook" && item.active);
   const instagramConnected = status.accounts.some((item) => item.platform === "instagram" && item.active);
+  const meta = catalog.items.find((item) => item.provider === "meta");
+  const planned = plannedPlatforms(catalog);
 
   return <>
     <p className="mb-5 rounded-xl border border-violet-100 bg-violet-50 p-4 text-sm text-violet-900">
       Meta solicitará los permisos necesarios para conectar Facebook e Instagram. Después podrás elegir qué cuentas utilizar en SocialOS.
     </p>
     <div className="grid gap-5 md:grid-cols-2">
-      <ChannelCard icon={<Facebook className="size-6" />} title="Facebook" description="Conecta tus páginas de Facebook para publicar y programar contenido." connected={facebookConnected} loading={pending === "authorize-facebook"} onConnect={() => connect({ intent: "facebook" })} />
-      <ChannelCard icon={<Instagram className="size-6" />} title="Instagram" description="Conecta una cuenta Business o Creator. Iniciarás sesión con Meta para autorizar la cuenta vinculada." connected={instagramConnected} loading={pending === "authorize-instagram"} onConnect={() => connect({ intent: "instagram" })} />
+      <ChannelCard disabled={!meta?.enabled} icon={<Facebook className="size-6" />} title="Facebook" description="Conecta tus páginas de Facebook para publicar y programar contenido." connected={facebookConnected} loading={pending === "authorize-facebook"} onConnect={() => connect({ intent: "facebook" })} />
+      <ChannelCard disabled={!meta?.enabled} icon={<Instagram className="size-6" />} title="Instagram" description="Conecta una cuenta Business o Creator. Iniciarás sesión con Meta para autorizar la cuenta vinculada." connected={instagramConnected} loading={pending === "authorize-instagram"} onConnect={() => connect({ intent: "instagram" })} />
     </div>
+    <section aria-labelledby="planned-platforms" className="mt-8"><div className="mb-4"><h2 className="text-lg font-bold" id="planned-platforms">Más plataformas</h2><p className="mt-1 text-sm text-zinc-500">Integraciones oficiales previstas. Todavía no realizan OAuth ni publicaciones.</p></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{planned.map((platform) => <PlannedChannelCard description={platform.description} icon={plannedIcon(platform.platform)} key={platform.platform} title={platform.display_name} />)}</div></section>
     {continuation ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm text-amber-900">Continue securely with a new Meta authorization.</p><Button className="mt-3" disabled={Boolean(pending)} onClick={() => { const request = continuation; setContinuation(null); void requestAuthorization(request, "redirect"); }}>Continuar en esta ventana</Button></div> : null}
     <div className="mt-6 space-y-4" id="connection-list">
       {status.connections.map((connection) => {
@@ -189,6 +195,17 @@ export function IntegrationCards({
   </>;
 }
 
-function ChannelCard({ icon, title, description, connected, loading, onConnect }: { icon: React.ReactNode; title: string; description: string; connected: boolean; loading: boolean; onConnect: () => void }) {
-  return <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm"><div className="flex size-11 items-center justify-center rounded-xl bg-zinc-950 text-white">{icon}</div><h2 className="mt-5 text-xl font-bold">{title}</h2><p className="mt-2 min-h-12 text-sm leading-6 text-zinc-600">{description}</p><div className="mt-5 flex items-center justify-between gap-3"><span className={`text-xs font-semibold ${connected ? "text-emerald-700" : "text-zinc-500"}`}>{connected ? "Connected" : "Not connected"}</span>{connected ? <a className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-semibold" href="#connection-list">Administrar</a> : <Button disabled={loading} onClick={onConnect}>{loading ? <><Loader2 className="animate-spin" /> Opening Meta...</> : `Connect ${title}`}</Button>}</div></article>;
+function ChannelCard({ icon, title, description, connected, disabled, loading, onConnect }: { icon: React.ReactNode; title: string; description: string; connected: boolean; disabled: boolean; loading: boolean; onConnect: () => void }) {
+  return <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm"><div className="flex size-11 items-center justify-center rounded-xl bg-zinc-950 text-white">{icon}</div><h2 className="mt-5 text-xl font-bold">{title}</h2><p className="mt-2 min-h-12 text-sm leading-6 text-zinc-600">{description}</p><div className="mt-5 flex items-center justify-between gap-3"><span className={`text-xs font-semibold ${connected ? "text-emerald-700" : "text-zinc-500"}`}>{connected ? "Connected" : disabled ? "Disabled" : "Not connected"}</span>{connected ? <a className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-semibold" href="#connection-list">Administrar</a> : <Button disabled={disabled || loading} onClick={onConnect}>{loading ? <><Loader2 className="animate-spin" /> Opening Meta...</> : `Connect ${title}`}</Button>}</div></article>;
+}
+
+function PlannedChannelCard({ description, icon, title }: { description: string; icon: React.ReactNode; title: string }) {
+  return <article className="rounded-2xl border border-zinc-200 bg-white p-5"><div className="flex size-11 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600">{icon}</div><h3 className="mt-4 font-bold">{title}</h3><p className="mt-2 min-h-10 text-sm leading-5 text-zinc-500">{description}</p><span className="mt-4 inline-flex rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">Próximamente</span></article>;
+}
+
+function plannedIcon(provider: string) {
+  if (provider === "linkedin") return <Linkedin className="size-5" />;
+  if (provider === "youtube") return <Youtube className="size-5" />;
+  if (provider === "tiktok") return <Music2 className="size-5" />;
+  return <MessageCircle className="size-5" />;
 }

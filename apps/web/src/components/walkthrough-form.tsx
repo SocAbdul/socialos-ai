@@ -15,7 +15,14 @@ import {
 
 const initialState: WalkthroughActionState = { errors: {}, message: null };
 
-export function WalkthroughForm({ connectedPlatforms, workspaceId }: { connectedPlatforms: Array<"facebook" | "instagram">; workspaceId: string }) {
+type ComposerPlatform = {
+  platform: "facebook" | "instagram";
+  displayName: string;
+  supportsText: boolean;
+  supportsSingleImage: boolean;
+};
+
+export function WalkthroughForm({ platforms, workspaceId }: { platforms: ComposerPlatform[]; workspaceId: string }) {
   const [state, formAction] = useActionState(createWalkthroughPublicationAction, initialState);
   const [clientErrors, setClientErrors] = useState<WalkthroughFieldErrors>({});
   const [file, setFile] = useState<File | null>(null);
@@ -57,9 +64,9 @@ export function WalkthroughForm({ connectedPlatforms, workspaceId }: { connected
       <fieldset className="grid gap-3 rounded-2xl border border-zinc-200 p-4">
         <legend className="px-2 text-sm font-semibold">Publish to</legend>
         <div className="flex flex-wrap gap-4">
-          <PlatformChoice disabled={!connectedPlatforms.includes("facebook")} name="facebook" label="Facebook Page" />
-          <PlatformChoice disabled={!connectedPlatforms.includes("instagram")} name="instagram" label="Instagram professional" />
+          {platforms.map((platform) => <PlatformChoice disabled={!platform.supportsSingleImage} key={platform.platform} label={platform.displayName} name={platform.platform} />)}
         </div>
+        {platforms.length === 0 ? <p className="text-xs text-amber-700">Connect an implemented account with single-image support to publish.</p> : null}
         {errors.platforms ? <p className="text-xs font-medium text-red-600" id="platforms-error">{errors.platforms}</p> : null}
       </fieldset>
       <div className="grid gap-4 md:grid-cols-2">
@@ -75,7 +82,7 @@ export function WalkthroughForm({ connectedPlatforms, workspaceId }: { connected
         {errors.mediaFile ? <p className="text-xs font-medium text-red-600" id="mediaFile-error">{errors.mediaFile}</p> : null}
         {preview ? <div className="relative w-fit"><Image alt="Selected media preview" className="max-h-72 rounded-xl border object-contain" height={720} src={preview} unoptimized width={720} /><button aria-label="Remove selected image" className="absolute right-2 top-2 grid size-11 place-items-center rounded-full bg-white shadow" onClick={() => { setFile(null); const input=formRef.current?.elements.namedItem("mediaFile"); if(input instanceof HTMLInputElement) input.value=""; }} type="button"><X className="size-4" /></button></div> : null}
       </div>
-      {preview ? <div className="grid gap-4 md:grid-cols-2"><Preview title="Facebook preview" image={preview} caption="Your Facebook caption or local adaptation" /><Preview title="Instagram preview" image={preview} caption="Your Instagram caption or local adaptation" /></div> : null}
+      {preview ? <div className="grid gap-4 md:grid-cols-2">{platforms.map((platform) => <Preview caption={`Your ${platform.displayName} caption or local adaptation`} image={preview} key={platform.platform} title={`${platform.displayName} preview`} />)}</div> : null}
       <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600"><input className="mt-1" name="simulateRetryableError" type="checkbox" /><span>Simulate one retryable failure in local development only.</span></label>
       <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950"><p className="font-semibold">Final confirmation</p><p>One independent publication will be created for every selected platform. A failure on one platform will not remove a successful result on another.</p></div>
       <div className="flex flex-col gap-3 sm:flex-row">

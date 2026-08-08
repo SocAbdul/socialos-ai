@@ -21,11 +21,13 @@ from socialos.infrastructure.database.models import (
     SocialAccountModel,
     WorkspaceModel,
 )
+from socialos.infrastructure.providers.registry import (
+    FACEBOOK_CAPABILITIES,
+    INSTAGRAM_CAPABILITIES,
+)
 from socialos.infrastructure.security.oauth_state import OAuthStateRecord
 from socialos.infrastructure.security.token_cipher import FernetTokenCipher
 from socialos.infrastructure.social.meta.provider import (
-    FACEBOOK_CAPABILITIES,
-    INSTAGRAM_CAPABILITIES,
     META_REQUIRED_SCOPES,
     MetaPermissionError,
     MetaProviderError,

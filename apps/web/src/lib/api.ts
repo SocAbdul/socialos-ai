@@ -216,6 +216,47 @@ export type SocialAccount = z.infer<typeof socialAccountSchema>;
 export type MediaUploadTarget = z.infer<typeof mediaUploadTargetSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 
+const providerCapabilitiesSchema = z.object({
+  supports_text: z.boolean(),
+  supports_single_image: z.boolean(),
+  supports_multiple_images: z.boolean(),
+  supports_video: z.boolean(),
+  supports_reels: z.boolean(),
+  supports_stories: z.boolean(),
+  supports_scheduling: z.boolean(),
+  supports_delete: z.boolean(),
+  supports_short_video: z.boolean(),
+  supports_comments: z.boolean(),
+  supports_analytics: z.boolean(),
+  supports_mentions: z.boolean(),
+  supports_hashtags: z.boolean(),
+  supports_first_comment: z.boolean(),
+  requires_public_media_url: z.boolean(),
+  max_text_length: z.number().int().nonnegative(),
+  supported_media_types: z.array(z.string()),
+  daily_publication_limit: z.number().int().nullable(),
+});
+const providerCatalogSchema = z.object({
+  items: z.array(z.object({
+    provider: z.string(),
+    display_name: z.string(),
+    status: z.string(),
+    enabled: z.boolean(),
+    platforms: z.array(z.object({
+      platform: z.string(),
+      display_name: z.string(),
+      description: z.string(),
+      status: z.string(),
+      implemented: z.boolean(),
+      connected: z.boolean(),
+      api_capabilities: providerCapabilitiesSchema,
+      capabilities: providerCapabilitiesSchema,
+    })),
+  })),
+});
+export type ProviderCatalog = z.infer<typeof providerCatalogSchema>;
+export type ProviderPlatform = ProviderCatalog["items"][number]["platforms"][number];
+
 const metaStatusSchema = z.object({
   connections: z.array(z.object({
     id: z.string().uuid(), page_name: z.string(), masked_page_id: z.string(),
@@ -734,6 +775,16 @@ export async function listSocialAccounts(
   } catch {
     return [];
   }
+}
+
+export async function getProviderCatalog(workspaceId: string): Promise<ProviderCatalog> {
+  const headers = await authenticationHeaders();
+  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/social/providers`, {
+    headers,
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(await apiError(response, "Provider catalog could not be loaded."));
+  return providerCatalogSchema.parse(await response.json());
 }
 
 export async function listMediaAssets(
