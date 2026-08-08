@@ -1,6 +1,6 @@
 # Meta Platform Access
 
-Status: IMPLEMENTED_NOT_VERIFIED.
+Status: VERIFIED_IN_DEVELOPMENT.
 
 ## Requirements
 
@@ -85,7 +85,11 @@ Not implemented yet. Meta webhooks should be added for connection health, commen
 - Internal lease/execution-key protection against simultaneous workers: implemented.
 - Uncertain result state for timeout/connection ambiguity: implemented.
 - Full webhook reconciliation: pending.
-- Real Kinetic Mobiles authorization and publication: not performed. `IMPLEMENTED_NOT_VERIFIED`.
+- Real Kinetic Mobiles authorization and publication: verified in Meta Development mode on
+  2026-08-07. One Facebook Page image post and one Instagram professional image post
+  completed through the official API with `started -> succeeded` attempt histories and
+  externally reachable result URLs.
+- Public customer authorization remains blocked on Meta App Review and Live mode.
 
 ## Local configuration runbook
 

@@ -1,6 +1,14 @@
 # Meta Real Publication Runbook
 
-Integration status: IMPLEMENTED_NOT_VERIFIED.
+Integration status: VERIFIED_IN_DEVELOPMENT.
+
+The supervised development verification completed on 2026-08-07 for Kinetic Mobiles:
+
+- Facebook Page single-image publication: verified through its external result URL.
+- Instagram professional single-image publication: verified through its external result URL.
+- Both publications recorded one logical attempt with `started -> succeeded` events.
+- The Meta app remains unpublished; App Review and Live mode are still required before
+  customer-facing production use.
 
 This runbook must be completed before marking Meta as `VERIFIED_IN_DEVELOPMENT`, `VERIFIED_IN_STAGING`, or `PRODUCTION_READY`.
 

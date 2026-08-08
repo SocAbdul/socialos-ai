@@ -11,7 +11,10 @@ This monorepo contains:
 - `infra`: Terraform foundations.
 - `docs`: launch, platform-access and runbook documentation.
 
-The product uses clean architecture and provider-based social connectors. Meta is currently `IMPLEMENTED_NOT_VERIFIED` until one real Kinetic Mobiles Facebook post and one real Instagram post are published from SocialOS AI.
+The product uses clean architecture and provider-based social connectors. Meta is
+`VERIFIED_IN_DEVELOPMENT`: real Kinetic Mobiles Facebook and Instagram image posts were
+published successfully through the official API. Meta App Review and Live mode remain
+required before customer-facing production use.
 
 ## Quick Start Para Windows
 

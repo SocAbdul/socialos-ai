@@ -40,6 +40,7 @@ import type {
   Workspace,
 } from "@/lib/api";
 import { groupPublicationAttempts } from "@/lib/publication-attempts";
+import { accountsForProvider } from "@/lib/social-account-selection";
 
 export function Dashboard({
   aiCost,
@@ -376,8 +377,16 @@ function LocalPublishingWalkthrough({
   const localConnections = connections.filter(
     (connection) => connection.provider === "local-dev",
   );
-  const visibleAccounts = socialProvider === "meta" ? socialAccounts.filter((account) => account.active) : localAccounts;
-  const visibleConnections = socialProvider === "meta" ? connections.filter((connection) => connection.provider === "meta") : localConnections;
+  const metaConnections = connections.filter(
+    (connection) => connection.provider === "meta",
+  );
+  const visibleAccounts = accountsForProvider(
+    socialAccounts,
+    connections,
+    socialProvider,
+  );
+  const visibleConnections =
+    socialProvider === "meta" ? metaConnections : localConnections;
   if (!workspace) {
     return (
       <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">

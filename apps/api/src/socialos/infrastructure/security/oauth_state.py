@@ -2,7 +2,7 @@ import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,6 +64,7 @@ class OAuthStateStore:
         now = datetime.now(UTC)
         self._session.add(
             OAuthStateModel(
+                id=uuid4(),
                 workspace_id=workspace_id,
                 user_id=user_id,
                 provider=provider,

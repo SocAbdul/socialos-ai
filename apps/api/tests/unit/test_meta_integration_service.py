@@ -142,7 +142,9 @@ async def test_oauth_state_persists_reconnect_target() -> None:
         target_connection_id=target,
     )
     assert capture.added is not None
-    assert cast(OAuthStateModel, capture.added).target_connection_id == target
+    oauth_state = cast(OAuthStateModel, capture.added)
+    assert oauth_state.id is not None
+    assert oauth_state.target_connection_id == target
 
 
 @pytest_asyncio.fixture
