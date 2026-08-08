@@ -19,16 +19,42 @@ const catalog: ProviderCatalog = { items: [
   { provider: "linkedin", display_name: "LinkedIn", status: "planned", enabled: false, platforms: [
     { platform: "linkedin", display_name: "LinkedIn", description: "Professional", status: "planned", implemented: false, connected: false, api_capabilities: { ...capabilities, supports_text: true }, capabilities },
   ] },
+  { provider: "future_provider", display_name: "Future Provider", status: "verified_in_development", enabled: true, platforms: [
+    { platform: "future_social", display_name: "Future Social", description: "Synthetic test target", status: "verified_in_development", implemented: true, connected: true, api_capabilities: { ...capabilities, supports_single_image: true }, capabilities: { ...capabilities, supports_single_image: true } },
+  ] },
 ] };
 
 describe("provider catalog selectors", () => {
   it("only enables implemented, connected and media-compatible composer targets", () => {
-    expect(implementedConnectedImagePlatforms(catalog)).toEqual([{
-      platform: "facebook",
-      displayName: "Facebook",
-      supportsText: true,
-      supportsSingleImage: true,
-    }]);
+    expect(implementedConnectedImagePlatforms(catalog).map((item) => item.platform)).toEqual([
+      "facebook",
+      "future_social",
+    ]);
+  });
+
+  it.each([
+    ["not implemented", { implemented: false }],
+    ["not connected", { connected: false }],
+    ["not image capable", { capabilities: { ...capabilities, supports_single_image: false } }],
+  ])("excludes a future provider when it is %s", (_name, override) => {
+    const future = catalog.items.find((item) => item.provider === "future_provider")!;
+    const changed: ProviderCatalog = {
+      items: catalog.items.map((provider) => provider.provider === "future_provider"
+        ? { ...provider, platforms: [{ ...future.platforms[0], ...override }] }
+        : provider),
+    };
+    expect(implementedConnectedImagePlatforms(changed).map((item) => item.platform)).not.toContain("future_social");
+  });
+
+  it("keeps every planned provider out of composer eligibility", () => {
+    const plannedNames = ["linkedin", "youtube", "tiktok", "reddit"];
+    const planned: ProviderCatalog = {
+      items: plannedNames.map((provider) => ({
+        provider, display_name: provider, status: "planned", enabled: true,
+        platforms: [{ platform: provider, display_name: provider, description: "planned", status: "planned", implemented: false, connected: true, api_capabilities: { ...capabilities, supports_single_image: true }, capabilities: { ...capabilities, supports_single_image: true } }],
+      })),
+    };
+    expect(implementedConnectedImagePlatforms(planned)).toEqual([]);
   });
 
   it("keeps planned platforms discoverable without making them operational", () => {

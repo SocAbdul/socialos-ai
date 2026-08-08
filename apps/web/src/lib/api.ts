@@ -42,7 +42,7 @@ const publicationSchema = z.object({
   content_item_id: z.string().uuid(),
   platform_connection_id: z.string().uuid(),
   social_account_id: z.string().uuid(),
-  platform: z.enum(["facebook", "instagram"]),
+  platform: z.string().min(1),
   caption: z.string(),
   media_asset_id: z.string().uuid().nullable(),
   status: z.enum([
@@ -142,7 +142,7 @@ const connectionSchema = z.object({
   id: z.string().uuid(),
   workspace_id: z.string().uuid(),
   provider: z.string(),
-  platform: z.enum(["facebook", "instagram"]),
+  platform: z.string().min(1),
   external_account_id: z.string(),
   external_account_name: z.string(),
   capabilities: z.record(z.string(), z.unknown()),
@@ -158,7 +158,7 @@ const socialAccountSchema = z.object({
   id: z.string().uuid(),
   workspace_id: z.string().uuid(),
   platform_connection_id: z.string().uuid(),
-  platform: z.enum(["facebook", "instagram"]),
+  platform: z.string().min(1),
   account_type: z.string(),
   external_account_id: z.string(),
   display_name: z.string(),
@@ -490,7 +490,7 @@ export async function adaptContentForPlatform(
   workspaceId: string,
   input: {
     text: string;
-    platform: "facebook" | "instagram";
+    platform: string;
   },
 ): Promise<AIGeneration | null> {
   try {
@@ -517,7 +517,7 @@ export async function createPublication(
     content_item_id: string;
     platform_connection_id: string;
     social_account_id: string;
-    platform: "facebook" | "instagram";
+    platform: string;
     caption: string;
     media_asset_id?: string | null;
     idempotency_key?: string;

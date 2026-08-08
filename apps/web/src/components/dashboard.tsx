@@ -399,9 +399,10 @@ function LocalPublishingWalkthrough({
   const catalogPlatforms = implementedConnectedImagePlatforms(providerCatalog);
   const composerPlatforms = socialProvider === "meta"
     ? catalogPlatforms
-    : visibleAccounts.map((account) => ({
+      : visibleAccounts.map((account) => ({
+        provider: "local-dev",
         platform: account.platform,
-        displayName: account.platform === "facebook" ? "Facebook" : "Instagram",
+        displayName: account.platform.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
         supportsText: Boolean(account.capabilities.supports_text),
         supportsSingleImage: Boolean(account.capabilities.supports_single_image),
       }));

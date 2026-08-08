@@ -12,6 +12,7 @@ import {
   createContentItem,
   createPublication,
   ensureLocalDevelopmentSocialAccounts,
+  getProviderCatalog,
   listPlatformConnections,
   listSocialAccounts,
   publishPublicationNow,
@@ -20,6 +21,7 @@ import {
   uploadMediaAsset,
 } from "@/lib/api";
 import { accountsForProvider } from "@/lib/social-account-selection";
+import { implementedConnectedImagePlatforms } from "@/lib/provider-catalog";
 import {
   type WalkthroughFieldErrors,
   validateWalkthrough,
@@ -73,16 +75,37 @@ export async function createWalkthroughPublicationAction(
     campaignName,
     contentBody,
     delivery,
-    facebook,
-    facebookCaption,
-    instagram,
-    instagramCaption,
+    captions,
     mediaFile,
     submissionId,
     simulateRetryableError,
+    selectedPlatforms,
     voice,
     workspaceId,
   } = validation.data;
+
+  let accounts = await listSocialAccounts(workspaceId);
+  const provider = process.env.SOCIAL_PROVIDER === "meta" ? "meta" : "local-dev";
+  if (provider === "local-dev" && accounts.length === 0) {
+    await ensureLocalDevelopmentSocialAccounts(workspaceId);
+    accounts = await listSocialAccounts(workspaceId);
+  }
+  const connections = await listPlatformConnections(workspaceId);
+  const availableAccounts = accountsForProvider(accounts, connections, provider);
+  const eligiblePlatforms = provider === "meta"
+    ? new Set(
+        implementedConnectedImagePlatforms(await getProviderCatalog(workspaceId)).map(
+          (item) => item.platform,
+        ),
+      )
+    : new Set(
+        availableAccounts
+          .filter((account) => account.capabilities.supports_single_image === true)
+          .map((account) => account.platform),
+      );
+  if (selectedPlatforms.some((platform) => !eligiblePlatforms.has(platform))) {
+    return actionFailure("One or more selected platforms are not available for image publishing.");
+  }
 
   const brand = await createBrandProfile(workspaceId, {
     name: brandName,
@@ -106,20 +129,6 @@ export async function createWalkthroughPublicationAction(
   const media = await uploadMediaAsset(workspaceId, mediaFile);
   if (!media) return actionFailure("The image could not be uploaded. Check its format and size.");
 
-  let accounts = await listSocialAccounts(workspaceId);
-  if (
-    process.env.SOCIAL_PROVIDER !== "meta" &&
-    !accounts.some((account) => account.platform === "facebook" || account.platform === "instagram")
-  ) {
-    await ensureLocalDevelopmentSocialAccounts(workspaceId);
-    accounts = await listSocialAccounts(workspaceId);
-  }
-  const connections = await listPlatformConnections(workspaceId);
-  const provider = process.env.SOCIAL_PROVIDER === "meta" ? "meta" : "local-dev";
-  const selectedPlatforms = [facebook ? "facebook" : null, instagram ? "instagram" : null].filter(
-    (item): item is "facebook" | "instagram" => item !== null,
-  );
-  const availableAccounts = accountsForProvider(accounts, connections, provider);
   const created = [];
   let aiCost = "0.00";
   for (const platform of selectedPlatforms) {
@@ -130,7 +139,7 @@ export async function createWalkthroughPublicationAction(
     const adaptation = await adaptContentForPlatform(workspaceId, { text: content.body, platform });
     if (!adaptation) return actionFailure(`Local ${platform} adaptation failed.`);
     aiCost = adaptation.estimated_cost;
-    const editedCaption = platform === "facebook" ? facebookCaption : instagramCaption;
+    const editedCaption = captions[platform] ?? "";
     let caption = editedCaption || adaptation.result;
     if (simulateRetryableError && process.env.SOCIAL_PROVIDER !== "meta") {
       caption = `${caption}\n\n[local-retryable-error]`;
