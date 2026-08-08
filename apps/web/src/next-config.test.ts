@@ -5,6 +5,7 @@ import nextConfig from "../next.config";
 describe("next security headers", () => {
   it("applies baseline browser hardening headers to every route", async () => {
     expect(nextConfig.poweredByHeader).toBe(false);
+    expect(nextConfig.experimental?.serverActions?.bodySizeLimit).toBe("16mb");
 
     const headers = await nextConfig.headers?.();
 

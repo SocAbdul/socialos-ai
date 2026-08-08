@@ -28,6 +28,10 @@ test("blocked popup offers a fresh same-window continuation", async ({ page }, t
 });
 
 test("multiple connections have scoped actions and accessible disconnect confirmation", async ({ page }) => {
+  test.skip(
+    process.env.NEXT_PUBLIC_DEMO_MODE === "false",
+    "Fixture connections are available only in demo mode.",
+  );
   await page.goto("/integrations?fixture=connected");
   await expect(page.getByText("Kinetic Mobiles Madrid", { exact: true })).toBeVisible();
   await expect(page.getByText("Kinetic Mobiles Valencia", { exact: true })).toBeVisible();

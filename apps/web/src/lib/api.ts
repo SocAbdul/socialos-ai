@@ -44,6 +44,7 @@ const publicationSchema = z.object({
   social_account_id: z.string().uuid(),
   platform: z.enum(["facebook", "instagram"]),
   caption: z.string(),
+  media_asset_id: z.string().uuid().nullable(),
   status: z.enum([
     "draft",
     "ready",
@@ -193,6 +194,9 @@ const mediaAssetSchema = z.object({
   media_type: z.enum(["image", "video"]),
   storage_url: z.string().url(),
   content_type: z.string(),
+  checksum_sha256: z.string(),
+  storage_key: z.string(),
+  size_bytes: z.number().int().nonnegative(),
 });
 
 const mediaAssetListSchema = z.object({
@@ -475,6 +479,7 @@ export async function createPublication(
     platform: "facebook" | "instagram";
     caption: string;
     media_asset_id?: string | null;
+    idempotency_key?: string;
   },
 ): Promise<Publication | null> {
   try {
@@ -796,6 +801,25 @@ export async function registerMediaAsset(
         body: JSON.stringify(input),
         cache: "no-store",
       },
+    );
+    if (!response.ok) return null;
+    return mediaAssetSchema.parse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function uploadMediaAsset(
+  workspaceId: string,
+  file: File,
+): Promise<MediaAsset | null> {
+  try {
+    const headers = await authenticationHeaders();
+    const body = new FormData();
+    body.set("file", file, file.name);
+    const response = await fetch(
+      `${API_URL}/workspaces/${workspaceId}/media-assets/upload`,
+      { method: "POST", headers, body, cache: "no-store" },
     );
     if (!response.ok) return null;
     return mediaAssetSchema.parse(await response.json());

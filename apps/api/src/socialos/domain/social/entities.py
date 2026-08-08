@@ -183,6 +183,8 @@ class MediaAsset:
     storage_url: str
     content_type: str
     checksum_sha256: str
+    storage_key: str = ""
+    size_bytes: int = 0
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 

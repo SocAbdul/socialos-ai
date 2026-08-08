@@ -423,6 +423,8 @@ class SqlAlchemyMediaAssetRepository(MediaAssetRepository):
                 storage_url=media_asset.storage_url,
                 content_type=media_asset.content_type,
                 checksum_sha256=media_asset.checksum_sha256,
+                storage_key=media_asset.storage_key,
+                size_bytes=media_asset.size_bytes,
                 created_at=media_asset.created_at,
             )
         )
@@ -454,6 +456,8 @@ class SqlAlchemyMediaAssetRepository(MediaAssetRepository):
         asset.storage_url = model.storage_url
         asset.content_type = model.content_type
         asset.checksum_sha256 = model.checksum_sha256
+        asset.storage_key = model.storage_key
+        asset.size_bytes = model.size_bytes
         asset.created_at = model.created_at
         return asset
 
@@ -465,6 +469,17 @@ class SqlAlchemyPublicationRepository(PublicationRepository):
     async def add(self, publication: Publication) -> Publication:
         self._session.add(self._model(publication))
         return publication
+
+    async def get_by_idempotency_key(
+        self, workspace_id: UUID, idempotency_key: str
+    ) -> Publication | None:
+        model = await self._session.scalar(
+            select(PublicationModel).where(
+                PublicationModel.workspace_id == workspace_id,
+                PublicationModel.idempotency_key == idempotency_key,
+            )
+        )
+        return self._publication(model) if model else None
 
     async def get(self, publication_id: UUID, workspace_id: UUID) -> Publication | None:
         model = await self._session.get(PublicationModel, publication_id)

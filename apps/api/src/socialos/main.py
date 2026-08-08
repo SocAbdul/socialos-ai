@@ -2,12 +2,14 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from starlette.middleware.base import RequestResponseEndpoint
+from starlette.staticfiles import StaticFiles
 
 from socialos.application.common.auth import AuthorizationError
 from socialos.application.social.use_cases import (
@@ -128,3 +130,8 @@ async def readiness() -> JSONResponse:
 
 app.include_router(posts_router, prefix="/api/v1")
 app.include_router(social_router, prefix="/api/v1")
+
+if settings.media_storage_provider == "local-public":
+    media_root = Path(settings.local_media_root)
+    media_root.mkdir(parents=True, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=media_root, check_dir=True), name="public-media")

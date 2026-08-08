@@ -7,5 +7,12 @@ test("unknown routes show a useful recovery path", async ({ page }) => {
   await expect(page.getByText("The link may be outdated")).toBeVisible();
 
   await page.getByRole("link", { name: "Back to dashboard" }).click();
-  await expect(page.getByRole("heading", { name: "Review the Meta publishing flow" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name:
+        process.env.NEXT_PUBLIC_DEMO_MODE === "false"
+          ? "Overview"
+          : "Review the Meta publishing flow",
+    }),
+  ).toBeVisible();
 });

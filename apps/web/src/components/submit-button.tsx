@@ -12,12 +12,16 @@ export function SubmitButton({
   disabled = false,
   pendingLabel = "Working...",
   variant,
+  name,
+  value,
 }: {
   children: React.ReactNode;
   className?: string;
   disabled?: boolean;
   pendingLabel?: string;
   variant?: "default" | "outline" | "ghost";
+  name?: string;
+  value?: string;
 }) {
   const { pending } = useFormStatus();
 
@@ -26,6 +30,8 @@ export function SubmitButton({
       aria-disabled={pending || disabled}
       className={cn("min-h-11", className)}
       disabled={pending || disabled}
+      name={name}
+      value={value}
       variant={variant}
     >
       {pending ? (

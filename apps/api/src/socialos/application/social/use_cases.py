@@ -4,12 +4,13 @@ import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from socialos.application.common.auth import Actor, Permission
 from socialos.application.social.ports import (
     AIContentService,
     JobQueue,
+    MediaPreflightService,
     MediaStorageService,
     MediaUploadRequest,
     MediaUploadTarget,
@@ -461,6 +462,8 @@ class RegisterMediaAssetCommand:
     storage_url: str
     content_type: str
     checksum_sha256: str
+    storage_key: str = "legacy"
+    size_bytes: int = 0
 
 
 class RegisterMediaAsset:
@@ -478,6 +481,8 @@ class RegisterMediaAsset:
                 storage_url=command.storage_url,
                 content_type=command.content_type,
                 checksum_sha256=command.checksum_sha256,
+                storage_key=command.storage_key,
+                size_bytes=command.size_bytes,
             )
             await uow.media_assets.add(asset)
             await uow.commit()
@@ -528,6 +533,64 @@ class RequestMediaUpload:
                 size_bytes=command.size_bytes,
             )
         )
+
+
+@dataclass(frozen=True, slots=True)
+class UploadMediaCommand:
+    workspace_id: UUID
+    filename: str
+    content_type: str
+    content: bytes
+
+
+class UploadMedia:
+    def __init__(
+        self,
+        uow_factory: Callable[[], SocialUnitOfWork],
+        storage: MediaStorageService,
+    ) -> None:
+        self._uow_factory = uow_factory
+        self._storage = storage
+
+    async def execute(self, actor: Actor, command: UploadMediaCommand) -> MediaAsset:
+        actor.require(Permission.POSTS_WRITE)
+        content_type = _validated_image_content(
+            command.filename, command.content_type, command.content
+        )
+        checksum = hashlib.sha256(command.content).hexdigest()
+        request = MediaUploadRequest(
+            workspace_id=command.workspace_id,
+            uploader_id=actor.user_id,
+            media_type=MediaType.IMAGE.value,
+            content_type=content_type,
+            checksum_sha256=checksum,
+            size_bytes=len(command.content),
+        )
+        _validate_media_upload(
+            RequestMediaUploadCommand(
+                workspace_id=command.workspace_id,
+                media_type=MediaType.IMAGE,
+                content_type=content_type,
+                checksum_sha256=checksum,
+                size_bytes=len(command.content),
+            )
+        )
+        async with self._uow_factory() as uow:
+            await require_workspace(uow, actor, command.workspace_id)
+            stored = self._storage.store(request, command.content)
+            asset = MediaAsset(
+                workspace_id=command.workspace_id,
+                uploader_id=actor.user_id,
+                media_type=MediaType.IMAGE,
+                storage_url=stored.public_url,
+                content_type=stored.content_type,
+                checksum_sha256=stored.checksum_sha256,
+                storage_key=stored.storage_key,
+                size_bytes=stored.size_bytes,
+            )
+            await uow.media_assets.add(asset)
+            await uow.commit()
+            return asset
 
 
 class AdaptContentForPlatform:
@@ -582,6 +645,7 @@ class CreatePublicationCommand:
     platform: Platform
     caption: str
     media_asset_id: UUID | None = None
+    idempotency_key: str | None = None
 
 
 class CreatePublication:
@@ -592,6 +656,12 @@ class CreatePublication:
         actor.require(Permission.POSTS_WRITE)
         async with self._uow_factory() as uow:
             await require_workspace(uow, actor, command.workspace_id)
+            if command.idempotency_key:
+                existing = await uow.publications.get_by_idempotency_key(
+                    command.workspace_id, command.idempotency_key
+                )
+                if existing:
+                    return existing
             connection = await uow.platform_connections.get(
                 command.platform_connection_id, command.workspace_id
             )
@@ -600,8 +670,21 @@ class CreatePublication:
             account = await uow.social_accounts.get(command.social_account_id, command.workspace_id)
             if account is None or account.platform_connection_id != connection.id:
                 raise ApplicationNotFoundError("Social account not found")
+            if account.platform != command.platform:
+                raise ValueError("Selected social account does not match the publication platform")
             _validate_publishable_connection(connection, account)
             _validate_publication_capabilities(account, command.caption, command.media_asset_id)
+            content_item = await uow.content_items.get(
+                command.content_item_id, command.workspace_id
+            )
+            if content_item is None:
+                raise ApplicationNotFoundError("Content item not found")
+            if command.media_asset_id is not None:
+                media_asset = await uow.media_assets.get(
+                    command.media_asset_id, command.workspace_id
+                )
+                if media_asset is None:
+                    raise ApplicationNotFoundError("Media asset not found")
             publication = Publication(
                 workspace_id=command.workspace_id,
                 content_item_id=command.content_item_id,
@@ -611,6 +694,7 @@ class CreatePublication:
                 caption=command.caption,
                 media_asset_id=command.media_asset_id,
                 status=PublicationStatus.READY,
+                idempotency_key=command.idempotency_key or str(uuid4()),
             )
             await uow.publications.add(publication)
             await uow.commit()
@@ -656,9 +740,11 @@ class SchedulePublication:
         self,
         uow_factory: Callable[[], SocialUnitOfWork],
         job_queue: JobQueue,
+        media_preflight: MediaPreflightService | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._job_queue = job_queue
+        self._media_preflight = media_preflight
 
     async def execute(self, actor: Actor, publication_id: UUID, run_at: datetime) -> Publication:
         actor.require(Permission.POSTS_WRITE)
@@ -669,6 +755,7 @@ class SchedulePublication:
             publication = await uow.publications.get(publication_id, workspace.id)
             if publication is None:
                 raise ApplicationNotFoundError("Publication not found")
+            await _preflight_publication_media(uow, publication, self._media_preflight)
             publication.schedule(run_at)
             await uow.publications.update(publication)
             await uow.commit()
@@ -681,9 +768,11 @@ class PublishPublicationNow:
         self,
         uow_factory: Callable[[], SocialUnitOfWork],
         job_queue: JobQueue,
+        media_preflight: MediaPreflightService | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._job_queue = job_queue
+        self._media_preflight = media_preflight
 
     async def execute(self, actor: Actor, publication_id: UUID) -> Publication:
         actor.require(Permission.POSTS_WRITE)
@@ -694,6 +783,7 @@ class PublishPublicationNow:
             publication = await uow.publications.get(publication_id, workspace.id)
             if publication is None:
                 raise ApplicationNotFoundError("Publication not found")
+            await _preflight_publication_media(uow, publication, self._media_preflight)
             if publication.status in {
                 PublicationStatus.PUBLISHED,
                 PublicationStatus.PUBLISHING,
@@ -719,9 +809,11 @@ class RetryPublication:
         self,
         uow_factory: Callable[[], SocialUnitOfWork],
         job_queue: JobQueue,
+        media_preflight: MediaPreflightService | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._job_queue = job_queue
+        self._media_preflight = media_preflight
 
     async def execute(self, actor: Actor, publication_id: UUID) -> Publication:
         actor.require(Permission.POSTS_WRITE)
@@ -732,6 +824,7 @@ class RetryPublication:
             publication = await uow.publications.get(publication_id, workspace.id)
             if publication is None:
                 raise ApplicationNotFoundError("Publication not found")
+            await _preflight_publication_media(uow, publication, self._media_preflight)
             if publication.status == PublicationStatus.UNCERTAIN:
                 raise ValueError(
                     "Uncertain publications must be reconciled before another publish attempt"
@@ -983,6 +1076,19 @@ def _input_hash(operation: AIOperation, payload: dict[str, object]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+async def _preflight_publication_media(
+    uow: SocialUnitOfWork,
+    publication: Publication,
+    service: MediaPreflightService | None,
+) -> None:
+    if service is None or publication.media_asset_id is None:
+        return
+    media = await uow.media_assets.get(publication.media_asset_id, publication.workspace_id)
+    if media is None:
+        raise ValueError("Media asset not found")
+    await service.validate(media)
+
+
 def _backoff(attempt_number: int) -> timedelta:
     seconds = min(900, 2 ** min(attempt_number, 8) * 30)
     return timedelta(seconds=seconds)
@@ -1059,6 +1165,25 @@ def _validate_media_upload(command: RequestMediaUploadCommand) -> None:
         int(command.checksum_sha256, 16)
     except ValueError as exc:
         raise ValueError("Media checksum must be a SHA-256 hex digest") from exc
+
+
+def _validated_image_content(filename: str, declared_type: str, content: bytes) -> str:
+    if not content:
+        raise ValueError("Image file cannot be empty")
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    signatures = {
+        "image/jpeg": ((b"\xff\xd8\xff",), {"jpg", "jpeg"}),
+        "image/png": ((b"\x89PNG\r\n\x1a\n",), {"png"}),
+    }
+    expected = signatures.get(declared_type)
+    if expected is None:
+        raise ValueError("Only JPEG and PNG images are supported")
+    prefixes, extensions = expected
+    if suffix not in extensions:
+        raise ValueError("Image extension does not match its content type")
+    if not any(content.startswith(prefix) for prefix in prefixes):
+        raise ValueError("Image content does not match its declared MIME type")
+    return declared_type
 
 
 def _is_uncertain_error(exc: Exception) -> bool:

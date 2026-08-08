@@ -1,9 +1,14 @@
+import hashlib
+from pathlib import Path
 from uuid import uuid4
+
+import pytest
 
 from socialos.application.social.ports import MediaUploadRequest
 from socialos.config import Settings
 from socialos.infrastructure.storage.media import (
     LocalMediaStorageService,
+    LocalPublicMediaStorageService,
     S3MediaStorageService,
     build_media_storage,
 )
@@ -72,3 +77,45 @@ def test_build_media_storage_uses_configured_provider() -> None:
 
     assert isinstance(local, LocalMediaStorageService)
     assert isinstance(s3, S3MediaStorageService)
+
+
+def test_local_public_storage_persists_under_opaque_unique_keys(tmp_path: Path) -> None:
+    settings = Settings(
+        environment="local",
+        media_storage_provider="local-public",
+        local_media_root=str(tmp_path),
+        media_public_base_url="https://preview.example.test/media",
+    )
+    service = LocalPublicMediaStorageService(settings)
+    content = b"\x89PNG\r\n\x1a\nreal-image-payload"
+    request = MediaUploadRequest(
+        workspace_id=uuid4(),
+        uploader_id="user_123",
+        media_type="image",
+        content_type="image/png",
+        checksum_sha256=hashlib.sha256(content).hexdigest(),
+        size_bytes=len(content),
+    )
+
+    first = service.store(request, content)
+    second = service.store(request, content)
+
+    assert first.storage_key != second.storage_key
+    assert request.checksum_sha256[:16] not in first.storage_key
+    assert (tmp_path / first.storage_key).read_bytes() == content
+    assert first.public_url.startswith("https://preview.example.test/media/workspaces/")
+
+
+def test_local_public_storage_rejects_checksum_mismatch(tmp_path: Path) -> None:
+    service = LocalPublicMediaStorageService(
+        Settings(
+            environment="local",
+            media_storage_provider="local-public",
+            local_media_root=str(tmp_path),
+            media_public_base_url="https://preview.example.test/media",
+        )
+    )
+    request = make_upload_request()
+
+    with pytest.raises(ValueError, match="checksum"):
+        service.store(request, b"different")
