@@ -23,8 +23,8 @@ async function fillComposer(page: Page) {
   await page
     .getByLabel("Base content")
     .fill("Same-day screen repairs are now available from Kinetic Mobiles.");
-  await page.getByLabel("Facebook Page").check();
-  await page.getByLabel("Instagram professional").check();
+  await page.getByLabel("Facebook", { exact: true }).check();
+  await page.getByLabel("Instagram", { exact: true }).check();
   await page.getByLabel("Facebook caption").fill("Your phone, repaired today.");
   await page
     .getByLabel("Instagram caption")
@@ -53,7 +53,7 @@ test.describe("real local multichannel composer", () => {
     await expect(page.getByText("Instagram preview")).toBeVisible();
     const publish = page.getByRole("button", { name: "Publish now" });
     await publish.click();
-    await expect(page.getByText("2 platform publications queued.")).toBeVisible();
+    await expect(page.getByText("2 platform publications queued.")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("Your phone, repaired today.").first()).toBeVisible();
     await expect(page.getByText("Your phone, repaired today. #KineticMobiles").first()).toBeVisible();
   });

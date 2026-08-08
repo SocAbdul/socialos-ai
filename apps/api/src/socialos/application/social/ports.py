@@ -35,6 +35,13 @@ class SocialProviderCapabilities:
     max_text_length: int
     supported_media_types: tuple[str, ...]
     daily_publication_limit: int | None
+    supports_short_video: bool = False
+    supports_comments: bool = False
+    supports_analytics: bool = False
+    supports_mentions: bool = False
+    supports_hashtags: bool = False
+    supports_first_comment: bool = False
+    requires_public_media_url: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -49,6 +56,13 @@ class SocialProviderCapabilities:
             "max_text_length": self.max_text_length,
             "supported_media_types": list(self.supported_media_types),
             "daily_publication_limit": self.daily_publication_limit,
+            "supports_short_video": self.supports_short_video,
+            "supports_comments": self.supports_comments,
+            "supports_analytics": self.supports_analytics,
+            "supports_mentions": self.supports_mentions,
+            "supports_hashtags": self.supports_hashtags,
+            "supports_first_comment": self.supports_first_comment,
+            "requires_public_media_url": self.requires_public_media_url,
         }
 
 
@@ -290,6 +304,10 @@ class MediaStorageService(Protocol):
 
 class MediaPreflightService(Protocol):
     async def validate(self, media: MediaAsset) -> None: ...
+
+
+class ProviderCapabilityRegistry(Protocol):
+    def require_operational(self, provider: str, platform: str, capability: str) -> None: ...
 
 
 class AIContentService(Protocol):

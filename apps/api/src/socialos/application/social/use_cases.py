@@ -14,6 +14,7 @@ from socialos.application.social.ports import (
     MediaStorageService,
     MediaUploadRequest,
     MediaUploadTarget,
+    ProviderCapabilityRegistry,
     SocialProvider,
     SocialUnitOfWork,
     TokenCipher,
@@ -649,8 +650,13 @@ class CreatePublicationCommand:
 
 
 class CreatePublication:
-    def __init__(self, uow_factory: Callable[[], SocialUnitOfWork]) -> None:
+    def __init__(
+        self,
+        uow_factory: Callable[[], SocialUnitOfWork],
+        provider_catalog: ProviderCapabilityRegistry | None = None,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._provider_catalog = provider_catalog
 
     async def execute(self, actor: Actor, command: CreatePublicationCommand) -> Publication:
         actor.require(Permission.POSTS_WRITE)
@@ -672,6 +678,13 @@ class CreatePublication:
                 raise ApplicationNotFoundError("Social account not found")
             if account.platform != command.platform:
                 raise ValueError("Selected social account does not match the publication platform")
+            if self._provider_catalog is not None and connection.provider != "local-dev":
+                capability = "supports_single_image" if command.media_asset_id else "supports_text"
+                self._provider_catalog.require_operational(
+                    connection.provider,
+                    command.platform.value,
+                    capability,
+                )
             _validate_publishable_connection(connection, account)
             _validate_publication_capabilities(account, command.caption, command.media_asset_id)
             content_item = await uow.content_items.get(

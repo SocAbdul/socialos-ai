@@ -128,3 +128,13 @@ def test_production_s3_configuration_does_not_require_static_aws_keys(
 
     assert settings.aws_access_key_id is None
     assert settings.aws_secret_access_key is None
+
+
+def test_planned_social_providers_are_disabled_by_default() -> None:
+    settings = get_settings()
+
+    assert settings.social_provider_meta_enabled is True
+    assert settings.social_provider_linkedin_enabled is False
+    assert settings.social_provider_youtube_enabled is False
+    assert settings.social_provider_tiktok_enabled is False
+    assert settings.social_provider_reddit_enabled is False

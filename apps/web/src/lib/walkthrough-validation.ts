@@ -12,32 +12,27 @@ const requiredText = (label: string, maxLength: number) =>
   z.string().trim().min(1, `${label} is required.`).max(maxLength);
 
 const text = (maxLength: number) => z.string().trim().max(maxLength);
+const platformIdentifier = z.string().trim().min(1).max(80).regex(/^[a-z0-9_-]+$/);
 
-export const walkthroughSchema = z
-  .object({
-    workspaceId: z.string().uuid(),
-    submissionId: z.string().min(16).max(96),
-    delivery: z.enum(["now", "schedule"]),
-    brandName: requiredText("Brand Profile", walkthroughLimits.brandName),
-    campaignName: requiredText("Campaign", walkthroughLimits.campaignName),
-    voice: requiredText("Brand voice", walkthroughLimits.profileText),
-    audience: requiredText("Audience", walkthroughLimits.profileText),
-    contentBody: requiredText("Original content", walkthroughLimits.contentBody),
-    facebook: z.boolean(),
-    instagram: z.boolean(),
-    facebookCaption: text(walkthroughLimits.caption),
-    instagramCaption: text(walkthroughLimits.caption),
-    simulateRetryableError: z.boolean(),
-  })
-  .refine((value) => value.facebook || value.instagram, {
-    path: ["platforms"],
-    message: "Select at least one connected platform.",
-  });
+export const walkthroughSchema = z.object({
+  workspaceId: z.string().uuid(),
+  submissionId: z.string().min(16).max(96),
+  delivery: z.enum(["now", "schedule"]),
+  brandName: requiredText("Brand Profile", walkthroughLimits.brandName),
+  campaignName: requiredText("Campaign", walkthroughLimits.campaignName),
+  voice: requiredText("Brand voice", walkthroughLimits.profileText),
+  audience: requiredText("Audience", walkthroughLimits.profileText),
+  contentBody: requiredText("Original content", walkthroughLimits.contentBody),
+  selectedPlatforms: z.array(platformIdentifier).min(1, "Select at least one connected platform."),
+  captions: z.record(platformIdentifier, text(walkthroughLimits.caption)),
+  simulateRetryableError: z.boolean(),
+});
 
 export type WalkthroughField =
   | keyof z.infer<typeof walkthroughSchema>
   | "platforms"
-  | "mediaFile";
+  | "mediaFile"
+  | `caption:${string}`;
 export type WalkthroughFieldErrors = Partial<Record<WalkthroughField, string>>;
 export type WalkthroughData = z.infer<typeof walkthroughSchema> & { mediaFile: File };
 type WalkthroughValidationResult =
@@ -45,6 +40,9 @@ type WalkthroughValidationResult =
   | { data: null; errors: WalkthroughFieldErrors };
 
 export function walkthroughInput(formData: FormData) {
+  const selectedPlatforms = Array.from(new Set(formData.getAll("platform").filter(
+    (value): value is string => typeof value === "string",
+  )));
   return {
     workspaceId: formData.get("workspaceId"),
     submissionId: formData.get("submissionId"),
@@ -54,10 +52,13 @@ export function walkthroughInput(formData: FormData) {
     voice: formData.get("voice"),
     audience: formData.get("audience"),
     contentBody: formData.get("contentBody"),
-    facebook: formData.get("facebook") === "on",
-    instagram: formData.get("instagram") === "on",
-    facebookCaption: formData.get("facebookCaption") ?? "",
-    instagramCaption: formData.get("instagramCaption") ?? "",
+    selectedPlatforms,
+    captions: Object.fromEntries(
+      selectedPlatforms.map((platform) => [
+        platform,
+        formData.get(`caption:${platform}`) ?? "",
+      ]),
+    ),
     simulateRetryableError: formData.get("simulateRetryableError") === "on",
   };
 }
@@ -67,7 +68,11 @@ export function validateWalkthrough(formData: FormData): WalkthroughValidationRe
   const errors: WalkthroughFieldErrors = {};
   if (!result.success) {
     for (const issue of result.error.issues) {
-      const field = issue.path[0] as WalkthroughField | undefined;
+      const field = issue.path[0] === "selectedPlatforms"
+        ? "platforms"
+        : issue.path[0] === "captions" && typeof issue.path[1] === "string"
+          ? `caption:${issue.path[1]}` as const
+          : issue.path[0] as WalkthroughField | undefined;
       if (field && !errors[field]) errors[field] = issue.message;
     }
   }

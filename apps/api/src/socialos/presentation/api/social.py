@@ -60,6 +60,7 @@ from socialos.domain.social import (
 )
 from socialos.infrastructure.ai.content_service import LocalAIContentService
 from socialos.infrastructure.database.session import SqlAlchemyUnitOfWork, session_factory
+from socialos.infrastructure.providers.registry import ProviderCatalog, build_provider_catalog
 from socialos.infrastructure.security.oauth_state import OAuthStateError, OAuthStateStore
 from socialos.infrastructure.security.token_cipher import FernetTokenCipher
 from socialos.infrastructure.social.meta import MetaSocialProvider
@@ -101,6 +102,17 @@ def _meta_provider() -> MetaSocialProvider:
 def _media_preflight() -> HTTPMediaPreflightService | None:
     settings = get_settings()
     return HTTPMediaPreflightService(settings) if settings.social_provider == "meta" else None
+
+
+def _provider_catalog() -> ProviderCatalog:
+    settings = get_settings()
+    return build_provider_catalog(
+        meta_enabled=settings.social_provider_meta_enabled,
+        linkedin_enabled=settings.social_provider_linkedin_enabled,
+        youtube_enabled=settings.social_provider_youtube_enabled,
+        tiktok_enabled=settings.social_provider_tiktok_enabled,
+        reddit_enabled=settings.social_provider_reddit_enabled,
+    )
 
 
 class CreateWorkspaceRequest(BaseModel):
@@ -254,6 +266,29 @@ class SocialAccountResponse(BaseModel):
 
 class SocialAccountListResponse(BaseModel):
     items: list[SocialAccountResponse]
+
+
+class ProviderPlatformResponse(BaseModel):
+    platform: str
+    display_name: str
+    description: str
+    status: str
+    implemented: bool
+    connected: bool
+    api_capabilities: dict[str, object]
+    capabilities: dict[str, object]
+
+
+class ProviderDefinitionResponse(BaseModel):
+    provider: str
+    display_name: str
+    status: str
+    enabled: bool
+    platforms: list[ProviderPlatformResponse]
+
+
+class ProviderCatalogResponse(BaseModel):
+    items: list[ProviderDefinitionResponse]
 
 
 class LocalDevelopmentSocialAccountsResponse(BaseModel):
@@ -763,6 +798,46 @@ async def list_social_accounts(
     )
 
 
+@router.get("/workspaces/{workspace_id}/social/providers")
+async def list_provider_catalog(
+    workspace_id: UUID,
+    actor: Annotated[Actor, Depends(get_actor)],
+) -> ProviderCatalogResponse:
+    connections = await ListPlatformConnections(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    accounts = await ListSocialAccounts(SqlAlchemyUnitOfWork).execute(actor, workspace_id)
+    connection_providers = {connection.id: connection.provider for connection in connections}
+    connected = {
+        (connection_providers.get(account.platform_connection_id), account.platform.value)
+        for account in accounts
+        if account.active and connection_providers.get(account.platform_connection_id)
+    }
+    catalog = _provider_catalog()
+    return ProviderCatalogResponse(
+        items=[
+            ProviderDefinitionResponse(
+                provider=definition.provider,
+                display_name=definition.display_name,
+                status=definition.status.value,
+                enabled=definition.enabled,
+                platforms=[
+                    ProviderPlatformResponse(
+                        platform=platform.platform,
+                        display_name=platform.display_name,
+                        description=platform.description,
+                        status=platform.status.value,
+                        implemented=platform.implemented,
+                        connected=(definition.provider, platform.platform) in connected,
+                        api_capabilities=platform.api_capabilities.as_dict(),
+                        capabilities=platform.socialos_capabilities.as_dict(),
+                    )
+                    for platform in definition.platforms
+                ],
+            )
+            for definition in catalog.list()
+        ]
+    )
+
+
 @router.post(
     "/workspaces/{workspace_id}/campaigns",
     status_code=status.HTTP_201_CREATED,
@@ -944,7 +1019,7 @@ async def create_publication(
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> PublicationResponse:
     try:
-        publication = await CreatePublication(SqlAlchemyUnitOfWork).execute(
+        publication = await CreatePublication(SqlAlchemyUnitOfWork, _provider_catalog()).execute(
             actor,
             CreatePublicationCommand(
                 workspace_id=workspace_id,
@@ -959,6 +1034,8 @@ async def create_publication(
         )
     except ApplicationNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PublicationResponse.from_domain(publication)
 
 
