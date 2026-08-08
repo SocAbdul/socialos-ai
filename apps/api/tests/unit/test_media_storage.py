@@ -1,4 +1,5 @@
 import hashlib
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -78,7 +79,7 @@ def test_build_media_storage_uses_configured_provider() -> None:
     assert isinstance(s3, S3MediaStorageService)
 
 
-def test_local_public_storage_persists_under_opaque_unique_keys(tmp_path) -> None:
+def test_local_public_storage_persists_under_opaque_unique_keys(tmp_path: Path) -> None:
     settings = Settings(
         environment="local",
         media_storage_provider="local-public",
@@ -105,7 +106,7 @@ def test_local_public_storage_persists_under_opaque_unique_keys(tmp_path) -> Non
     assert first.public_url.startswith("https://preview.example.test/media/workspaces/")
 
 
-def test_local_public_storage_rejects_checksum_mismatch(tmp_path) -> None:
+def test_local_public_storage_rejects_checksum_mismatch(tmp_path: Path) -> None:
     service = LocalPublicMediaStorageService(
         Settings(
             environment="local",
