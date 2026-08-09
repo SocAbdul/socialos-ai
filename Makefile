@@ -1,4 +1,4 @@
-.PHONY: install dev test lint format compose-up compose-down migrate
+.PHONY: install dev test lint format compose-up compose-down migrate staging-preflight staging-config
 
 install:
 	cd apps/api && uv sync --all-groups --frozen
@@ -30,3 +30,9 @@ compose-down:
 
 migrate:
 	cd apps/api && uv run alembic upgrade head
+
+staging-preflight:
+	python3 scripts/staging_preflight.py --env-file $${STAGING_ENV_FILE:-.env.staging}
+
+staging-config:
+	STAGING_ENV_FILE=$${STAGING_ENV_FILE:-.env.staging} docker compose --env-file $${STAGING_ENV_FILE:-.env.staging} -f docker-compose.staging.yml config --quiet

@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
     app_name: str = "SocialOS AI"
     environment: Environment = "local"
     log_level: str = "INFO"
+    release_sha: str = "development"
     app_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
     web_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
     api_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000")
@@ -40,6 +42,7 @@ class Settings(BaseSettings):
     clerk_audience: str | None = None
     clerk_authorized_parties: str = "http://localhost:3000"
     web_origins: str = "http://localhost:3000"
+    trusted_hosts: str = "localhost,127.0.0.1,testserver"
     token_encryption_key: str | None = Field(default=None, repr=False)
     meta_app_id: str | None = None
     meta_app_secret: str | None = Field(default=None, repr=False)
@@ -104,6 +107,10 @@ class Settings(BaseSettings):
         ]
 
     @property
+    def trusted_host_list(self) -> list[str]:
+        return [host.strip() for host in self.trusted_hosts.split(",") if host.strip()]
+
+    @property
     def resolved_meta_redirect_uri(self) -> str:
         if self.meta_redirect_uri:
             return self.meta_redirect_uri
@@ -134,6 +141,10 @@ class Settings(BaseSettings):
         }.items():
             if self.environment in {"staging", "production"} and urlsplit(value).scheme != "https":
                 raise ValueError(f"{name} must use HTTPS outside local/test")
+        if self.environment in {"staging", "production"} and not re.fullmatch(
+            r"[0-9a-f]{40}", self.release_sha
+        ):
+            raise ValueError("RELEASE_SHA must be a 40-character lowercase Git SHA")
         return self
 
 
@@ -181,6 +192,9 @@ def _validate_runtime_security(settings: Settings) -> None:
         raise RuntimeError("WEB_ORIGINS must contain an explicit origin allowlist")
     if any(urlsplit(origin).scheme != "https" for origin in origins):
         raise RuntimeError("WEB_ORIGINS must use HTTPS outside local/test")
+    hosts = settings.trusted_host_list
+    if not hosts or "*" in hosts or any("://" in host or "/" in host for host in hosts):
+        raise RuntimeError("TRUSTED_HOSTS must contain explicit hostnames outside local/test")
 
     if settings.social_provider_meta_enabled:
         required_meta = {

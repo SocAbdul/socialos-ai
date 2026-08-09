@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from starlette.middleware.base import RequestResponseEndpoint
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.staticfiles import StaticFiles
 
 from socialos.application.common.auth import AuthorizationError
@@ -68,6 +69,7 @@ app.add_middleware(
     ],
     expose_headers=["X-Request-ID"],
 )
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_host_list)
 
 
 @app.middleware("http")
@@ -158,6 +160,7 @@ async def readiness() -> JSONResponse:
             "status": "ready" if is_ready else "not_ready",
             "environment": settings.environment,
             "version": app.version,
+            "release_sha": settings.release_sha,
             "dependencies": dependencies,
         },
     )

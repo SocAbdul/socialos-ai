@@ -136,6 +136,27 @@ jobs:
           RUNTIME_ENV_FILE: .env.staging.example
           IMAGE_TAG: ${{ github.sha }}
         run: docker compose -f docker-compose.runtime.yml config
+      - name: Validate Hetzner staging contract offline
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          API_IMAGE: ghcr.io/socabdul/socialos-api
+          WEB_IMAGE: ghcr.io/socabdul/socialos-web
+          POSTGRES_PASSWORD: ci-only-postgres-password
+          DATABASE_URL: postgresql+asyncpg://socialos:ci-only-postgres-password@postgres:5432/socialos
+          REDIS_PASSWORD: ci-only-redis-password
+          REDIS_URL: redis://:ci-only-redis-password@redis:6379/0
+          CLERK_JWKS_URL: https://clerk.example.test/.well-known/jwks.json
+          CLERK_ISSUER: https://clerk.example.test
+          TOKEN_ENCRYPTION_KEY: ci-only-token-encryption-key-with-48-characters
+          S3_MEDIA_BUCKET: ci-only-bucket
+          S3_ENDPOINT_URL: https://ci-only.r2.cloudflarestorage.com
+          AWS_ACCESS_KEY_ID: ci-only-access-key
+          AWS_SECRET_ACCESS_KEY: ci-only-secret-key
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci_only
+          CADDY_ACME_EMAIL: ci-only@example.test
+        run: |
+          python scripts/staging_preflight.py --env-file .env.staging.example --allow-placeholders
+          STAGING_ENV_FILE=.env.staging.example docker compose --env-file .env.staging.example -f docker-compose.staging.yml config --quiet
       - name: Reject machine-specific runtime dependencies
         run: |
           ! grep -R -E 'C:\\dev|trycloudflare\.com|host\.docker\.internal|socialos-preview' apps/api/src apps/web/src

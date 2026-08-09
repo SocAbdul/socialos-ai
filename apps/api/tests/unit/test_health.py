@@ -33,6 +33,7 @@ def test_readiness_returns_ready_when_dependencies_are_healthy(monkeypatch: Any)
         "status": "ready",
         "environment": payload["environment"],
         "version": "0.1.0",
+        "release_sha": "development",
         "dependencies": {
             "database": {"status": "ok", "latency_ms": 1, "error": None},
             "redis": {"status": "ok", "latency_ms": 2, "error": None},

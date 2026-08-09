@@ -1,5 +1,7 @@
 # Staging deployment runbook
 
+> The selected no-provisioning preparation for Hetzner + Cloudflare R2 is documented in `hetzner-staging-deployment.md`. This older generic runtime contract remains for compatibility and is not authorization to use AWS.
+
 This is an architecture contract, not evidence that staging exists.
 
 1. Allocate a stable domain and HTTPS certificates for app, API and public media.
