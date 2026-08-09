@@ -423,6 +423,7 @@ class SqlAlchemyMediaAssetRepository(MediaAssetRepository):
                 storage_url=media_asset.storage_url,
                 content_type=media_asset.content_type,
                 checksum_sha256=media_asset.checksum_sha256,
+                storage_provider=media_asset.storage_provider,
                 storage_key=media_asset.storage_key,
                 size_bytes=media_asset.size_bytes,
                 created_at=media_asset.created_at,
@@ -456,6 +457,7 @@ class SqlAlchemyMediaAssetRepository(MediaAssetRepository):
         asset.storage_url = model.storage_url
         asset.content_type = model.content_type
         asset.checksum_sha256 = model.checksum_sha256
+        asset.storage_provider = model.storage_provider
         asset.storage_key = model.storage_key
         asset.size_bytes = model.size_bytes
         asset.created_at = model.created_at

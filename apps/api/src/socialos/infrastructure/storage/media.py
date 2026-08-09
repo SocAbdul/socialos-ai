@@ -5,16 +5,19 @@ import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import boto3
 import httpx
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 from socialos.application.social.ports import (
     MediaUploadRequest,
     MediaUploadTarget,
     StoredMedia,
+    StoredObjectMetadata,
 )
 from socialos.config import Settings
 from socialos.domain.social import MediaAsset
@@ -28,7 +31,7 @@ class HTTPMediaPreflightService:
     def __init__(
         self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None
     ) -> None:
-        self._allowed_base = settings.media_public_base_url.rstrip("/") + "/"
+        self._allowed_base = settings.resolved_media_public_base_url + "/"
         self._transport = transport
 
     async def validate(self, media: MediaAsset) -> None:
@@ -60,8 +63,8 @@ class LocalMediaStorageService:
         object_key = _object_key(request)
         return MediaUploadTarget(
             object_key=object_key,
-            upload_url=f"http://localhost:8000/local-media/{quote(object_key)}",
-            public_url=f"https://media.local.socialos.invalid/{quote(object_key)}",
+            upload_url=f"{str(self._settings.api_base_url).rstrip('/')}/local-media/{quote(object_key)}",
+            public_url=self.public_url(object_key),
             method="PUT",
             headers={
                 "Content-Type": request.content_type,
@@ -75,6 +78,18 @@ class LocalMediaStorageService:
         raise MediaStorageConfigurationError(
             "Direct media upload requires MEDIA_STORAGE_PROVIDER=local-public"
         )
+
+    def delete(self, object_key: str) -> None:
+        raise MediaStorageConfigurationError("Legacy local storage does not persist objects")
+
+    def exists(self, object_key: str) -> bool:
+        return False
+
+    def public_url(self, object_key: str) -> str:
+        return f"{self._settings.media_public_base_url.rstrip('/')}/{quote(object_key)}"
+
+    def metadata(self, object_key: str) -> StoredObjectMetadata | None:
+        return None
 
 
 class LocalPublicMediaStorageService:
@@ -115,6 +130,7 @@ class LocalPublicMediaStorageService:
         finally:
             temporary.unlink(missing_ok=True)
         return StoredMedia(
+            storage_provider="local-public",
             storage_key=object_key,
             public_url=f"{self._public_base_url}/{quote(object_key)}",
             content_type=request.content_type,
@@ -122,9 +138,36 @@ class LocalPublicMediaStorageService:
             size_bytes=len(content),
         )
 
+    def delete(self, object_key: str) -> None:
+        self._path(object_key).unlink(missing_ok=True)
+
+    def exists(self, object_key: str) -> bool:
+        return self._path(object_key).is_file()
+
+    def public_url(self, object_key: str) -> str:
+        return f"{self._public_base_url}/{quote(object_key)}"
+
+    def metadata(self, object_key: str) -> StoredObjectMetadata | None:
+        path = self._path(object_key)
+        if not path.is_file():
+            return None
+        content = path.read_bytes()
+        return StoredObjectMetadata(
+            object_key=object_key,
+            content_type=_content_type(path.suffix),
+            size_bytes=len(content),
+            checksum_sha256=hashlib.sha256(content).hexdigest(),
+        )
+
+    def _path(self, object_key: str) -> Path:
+        path = (self._root / object_key).resolve()
+        if not path.is_relative_to(self._root):
+            raise ValueError("Invalid media storage path")
+        return path
+
 
 class S3MediaStorageService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, client: Any | None = None) -> None:
         self._settings = settings
         self._bucket = _require(settings.s3_media_bucket, "S3_MEDIA_BUCKET")
         self._region = _require(settings.s3_media_region, "S3_MEDIA_REGION")
@@ -141,7 +184,9 @@ class S3MediaStorageService:
             client_kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
         if settings.aws_session_token:
             client_kwargs["aws_session_token"] = settings.aws_session_token
-        self._client = boto3.client("s3", **client_kwargs)
+        if settings.s3_endpoint_url:
+            client_kwargs["endpoint_url"] = str(settings.s3_endpoint_url)
+        self._client: Any = client or boto3.client("s3", **client_kwargs)
 
     def create_upload_target(self, request: MediaUploadRequest) -> MediaUploadTarget:
         now = datetime.now(UTC)
@@ -174,6 +219,30 @@ class S3MediaStorageService:
     def store(self, request: MediaUploadRequest, content: bytes) -> StoredMedia:
         raise MediaStorageConfigurationError("Direct API upload is only available for local-public")
 
+    def delete(self, object_key: str) -> None:
+        self._client.delete_object(Bucket=self._bucket, Key=object_key)
+
+    def exists(self, object_key: str) -> bool:
+        return self.metadata(object_key) is not None
+
+    def public_url(self, object_key: str) -> str:
+        return f"{self._public_base_url}/{quote(object_key)}"
+
+    def metadata(self, object_key: str) -> StoredObjectMetadata | None:
+        try:
+            result = self._client.head_object(Bucket=self._bucket, Key=object_key)
+        except ClientError as exc:
+            if exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
+                return None
+            raise
+        metadata = result.get("Metadata", {})
+        return StoredObjectMetadata(
+            object_key=object_key,
+            content_type=result.get("ContentType", "application/octet-stream"),
+            size_bytes=result.get("ContentLength", 0),
+            checksum_sha256=metadata.get("sha256"),
+        )
+
 
 def build_media_storage(
     settings: Settings,
@@ -198,6 +267,12 @@ def _random_object_key(request: MediaUploadRequest) -> str:
 
 def _extension(content_type: str) -> str:
     return {"image/jpeg": "jpg", "image/png": "png", "video/mp4": "mp4"}.get(content_type, "bin")
+
+
+def _content_type(suffix: str) -> str:
+    return {".jpg": "image/jpeg", ".png": "image/png", ".mp4": "video/mp4"}.get(
+        suffix.lower(), "application/octet-stream"
+    )
 
 
 def _require(value: str | None, name: str) -> str:

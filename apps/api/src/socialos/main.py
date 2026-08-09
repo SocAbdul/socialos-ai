@@ -1,8 +1,11 @@
 import asyncio
+import re
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
+from uuid import uuid4
 
 import structlog
 from fastapi import FastAPI, Request
@@ -33,6 +36,8 @@ structlog.configure(
         structlog.processors.JSONRenderer(),
     ],
 )
+logger = structlog.get_logger("socialos.api")
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 
 @asynccontextmanager
@@ -59,8 +64,38 @@ app.add_middleware(
         "X-User-Id",
         "X-Organization-Id",
         "X-Organization-Role",
+        "X-Request-ID",
     ],
+    expose_headers=["X-Request-ID"],
 )
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    supplied = request.headers.get("X-Request-ID", "")
+    request_id = supplied if _REQUEST_ID_PATTERN.fullmatch(supplied) else uuid4().hex
+    started = time.perf_counter()
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(
+        request_id=request_id,
+        service="api",
+        environment=settings.environment,
+    )
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        logger.info(
+            "http_request_completed",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            result="success" if response.status_code < 500 else "error",
+        )
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        structlog.contextvars.clear_contextvars()
 
 
 @app.middleware("http")

@@ -11,7 +11,12 @@ from socialos.application.social.ports import (
     MediaUploadTarget,
     SocialUnitOfWork,
 )
-from socialos.application.social.use_cases import RequestMediaUpload, RequestMediaUploadCommand
+from socialos.application.social.use_cases import (
+    RegisterMediaAsset,
+    RegisterMediaAssetCommand,
+    RequestMediaUpload,
+    RequestMediaUploadCommand,
+)
 from socialos.domain.social import MediaType, Workspace
 
 
@@ -54,6 +59,27 @@ async def test_request_media_upload_rejects_unsupported_content_type() -> None:
                 media_type=MediaType.IMAGE,
                 content_type="image/gif",
                 checksum_sha256="a" * 64,
+                size_bytes=1_024,
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_registered_storage_key_must_belong_to_workspace() -> None:
+    workspace_id = uuid4()
+    foreign_workspace_id = uuid4()
+
+    with pytest.raises(ValueError, match="does not belong to this workspace"):
+        await RegisterMediaAsset(lambda: cast(SocialUnitOfWork, None)).execute(
+            Actor(user_id="user_1", organization_id="org_1", role=OrganizationRole.ADMIN),
+            RegisterMediaAssetCommand(
+                workspace_id=workspace_id,
+                media_type=MediaType.IMAGE,
+                storage_url="https://media.example.test/image.jpg",
+                content_type="image/jpeg",
+                checksum_sha256="a" * 64,
+                storage_provider="s3",
+                storage_key=f"workspaces/{foreign_workspace_id}/media/image.jpg",
                 size_bytes=1_024,
             ),
         )

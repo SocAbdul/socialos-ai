@@ -111,11 +111,20 @@ class MediaUploadTarget:
 
 @dataclass(frozen=True, slots=True)
 class StoredMedia:
+    storage_provider: str
     storage_key: str
     public_url: str
     content_type: str
     checksum_sha256: str
     size_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class StoredObjectMetadata:
+    object_key: str
+    content_type: str
+    size_bytes: int
+    checksum_sha256: str | None
 
 
 class WorkspaceRepository(Protocol):
@@ -300,6 +309,14 @@ class MediaStorageService(Protocol):
     def create_upload_target(self, request: MediaUploadRequest) -> MediaUploadTarget: ...
 
     def store(self, request: MediaUploadRequest, content: bytes) -> StoredMedia: ...
+
+    def delete(self, object_key: str) -> None: ...
+
+    def exists(self, object_key: str) -> bool: ...
+
+    def public_url(self, object_key: str) -> str: ...
+
+    def metadata(self, object_key: str) -> StoredObjectMetadata | None: ...
 
 
 class MediaPreflightService(Protocol):
