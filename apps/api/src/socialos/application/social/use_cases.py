@@ -463,6 +463,7 @@ class RegisterMediaAssetCommand:
     storage_url: str
     content_type: str
     checksum_sha256: str
+    storage_provider: str = "external"
     storage_key: str = "legacy"
     size_bytes: int = 0
 
@@ -473,6 +474,10 @@ class RegisterMediaAsset:
 
     async def execute(self, actor: Actor, command: RegisterMediaAssetCommand) -> MediaAsset:
         actor.require(Permission.POSTS_WRITE)
+        if command.storage_provider != "external" and not command.storage_key.startswith(
+            f"workspaces/{command.workspace_id}/media/"
+        ):
+            raise ValueError("Media storage key does not belong to this workspace")
         async with self._uow_factory() as uow:
             await require_workspace(uow, actor, command.workspace_id)
             asset = MediaAsset(
@@ -482,6 +487,7 @@ class RegisterMediaAsset:
                 storage_url=command.storage_url,
                 content_type=command.content_type,
                 checksum_sha256=command.checksum_sha256,
+                storage_provider=command.storage_provider,
                 storage_key=command.storage_key,
                 size_bytes=command.size_bytes,
             )
@@ -586,6 +592,7 @@ class UploadMedia:
                 storage_url=stored.public_url,
                 content_type=stored.content_type,
                 checksum_sha256=stored.checksum_sha256,
+                storage_provider=stored.storage_provider,
                 storage_key=stored.storage_key,
                 size_bytes=stored.size_bytes,
             )

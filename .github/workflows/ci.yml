@@ -131,6 +131,14 @@ jobs:
         run: docker build --target production -t socialos-web:${{ github.sha }} apps/web
       - name: Validate Docker Compose
         run: docker compose config
+      - name: Validate production-shaped runtime contract
+        env:
+          RUNTIME_ENV_FILE: .env.staging.example
+          IMAGE_TAG: ${{ github.sha }}
+        run: docker compose -f docker-compose.runtime.yml config
+      - name: Reject machine-specific runtime dependencies
+        run: |
+          ! grep -R -E 'C:\\dev|trycloudflare\.com|host\.docker\.internal|socialos-preview' apps/api/src apps/web/src
       - name: Start complete development stack
         run: docker compose up --build --wait --wait-timeout 180
       - name: Verify API, web, Redis and worker

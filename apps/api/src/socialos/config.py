@@ -1,7 +1,8 @@
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
@@ -28,6 +29,9 @@ class Settings(BaseSettings):
     app_name: str = "SocialOS AI"
     environment: Environment = "local"
     log_level: str = "INFO"
+    app_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
+    web_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
+    api_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8000")
     database_url: str = "postgresql+asyncpg://socialos:socialos@localhost:5432/socialos"
     redis_url: str = "redis://localhost:6379/0"
     auth_mode: AuthMode = "development"
@@ -36,11 +40,11 @@ class Settings(BaseSettings):
     clerk_audience: str | None = None
     clerk_authorized_parties: str = "http://localhost:3000"
     web_origins: str = "http://localhost:3000"
-    token_encryption_key: str | None = None
+    token_encryption_key: str | None = Field(default=None, repr=False)
     meta_app_id: str | None = None
-    meta_app_secret: str | None = None
+    meta_app_secret: str | None = Field(default=None, repr=False)
     meta_login_config_id: str | None = None
-    meta_redirect_uri: str = "http://localhost:3000/integrations/meta/callback"
+    meta_redirect_uri: str | None = None
     meta_graph_api_version: str = "v25.0"
     social_provider: SocialProviderMode = "local-dev"
     social_provider_meta_enabled: bool = True
@@ -58,9 +62,12 @@ class Settings(BaseSettings):
     s3_media_bucket: str | None = None
     s3_media_region: str | None = None
     s3_media_public_base_url: str | None = None
+    s3_endpoint_url: AnyHttpUrl | None = None
     aws_access_key_id: str | None = None
-    aws_secret_access_key: str | None = None
-    aws_session_token: str | None = None
+    aws_secret_access_key: str | None = Field(default=None, repr=False)
+    aws_session_token: str | None = Field(default=None, repr=False)
+    database_pool_size: int = 10
+    database_max_overflow: int = 20
 
     @field_validator(
         "clerk_jwks_url",
@@ -70,9 +77,11 @@ class Settings(BaseSettings):
         "meta_app_id",
         "meta_app_secret",
         "meta_login_config_id",
+        "meta_redirect_uri",
         "s3_media_bucket",
         "s3_media_region",
         "s3_media_public_base_url",
+        "s3_endpoint_url",
         "aws_access_key_id",
         "aws_secret_access_key",
         "aws_session_token",
@@ -93,6 +102,39 @@ class Settings(BaseSettings):
         return [
             party.strip() for party in self.clerk_authorized_parties.split(",") if party.strip()
         ]
+
+    @property
+    def resolved_meta_redirect_uri(self) -> str:
+        if self.meta_redirect_uri:
+            return self.meta_redirect_uri
+        return f"{str(self.web_base_url).rstrip('/')}/integrations/meta/callback"
+
+    @property
+    def resolved_media_public_base_url(self) -> str:
+        if self.media_storage_provider == "s3" and self.s3_media_public_base_url:
+            return self.s3_media_public_base_url.rstrip("/")
+        return self.media_public_base_url.rstrip("/")
+
+    @model_validator(mode="after")
+    def validate_portable_runtime(self) -> "Settings":
+        if not self.database_url.startswith(("postgresql+asyncpg://", "sqlite+aiosqlite://")):
+            raise ValueError("DATABASE_URL must use PostgreSQL asyncpg or test SQLite aiosqlite")
+        if self.environment in {"staging", "production"} and not self.database_url.startswith(
+            "postgresql+asyncpg://"
+        ):
+            raise ValueError("Staging and production require PostgreSQL via asyncpg")
+        if not self.redis_url.startswith(("redis://", "rediss://")):
+            raise ValueError("REDIS_URL must use redis or rediss")
+        if self.database_pool_size < 1 or self.database_max_overflow < 0:
+            raise ValueError("Database pool settings must be non-negative and pool size at least 1")
+        for name, value in {
+            "APP_BASE_URL": str(self.app_base_url),
+            "WEB_BASE_URL": str(self.web_base_url),
+            "API_BASE_URL": str(self.api_base_url),
+        }.items():
+            if self.environment in {"staging", "production"} and urlsplit(value).scheme != "https":
+                raise ValueError(f"{name} must use HTTPS outside local/test")
+        return self
 
 
 def _validate_runtime_security(settings: Settings) -> None:
@@ -124,6 +166,33 @@ def _validate_runtime_security(settings: Settings) -> None:
     missing = [name for name, value in required_s3_settings.items() if not value]
     if missing:
         raise RuntimeError(f"Missing required S3 media settings: {', '.join(missing)}")
+    media_public_url = settings.s3_media_public_base_url
+    if not media_public_url or not media_public_url.startswith("https://"):
+        raise RuntimeError("S3_MEDIA_PUBLIC_BASE_URL must use HTTPS outside local/test")
+    if settings.s3_endpoint_url and str(settings.s3_endpoint_url).startswith("http://"):
+        raise RuntimeError("S3_ENDPOINT_URL must use HTTPS outside local/test")
+    if settings.s3_endpoint_url and not (
+        settings.aws_access_key_id and settings.aws_secret_access_key
+    ):
+        raise RuntimeError("S3-compatible endpoints require access key configuration")
+
+    origins = settings.web_origin_list
+    if not origins or "*" in origins:
+        raise RuntimeError("WEB_ORIGINS must contain an explicit origin allowlist")
+    if any(urlsplit(origin).scheme != "https" for origin in origins):
+        raise RuntimeError("WEB_ORIGINS must use HTTPS outside local/test")
+
+    if settings.social_provider_meta_enabled:
+        required_meta = {
+            "META_APP_ID": settings.meta_app_id,
+            "META_APP_SECRET": settings.meta_app_secret,
+            "META_LOGIN_CONFIG_ID": settings.meta_login_config_id,
+        }
+        missing_meta = [name for name, value in required_meta.items() if not value]
+        if missing_meta:
+            raise RuntimeError(f"Missing required Meta settings: {', '.join(missing_meta)}")
+        if not settings.resolved_meta_redirect_uri.startswith("https://"):
+            raise RuntimeError("Meta redirect URI must use HTTPS outside local/test")
 
 
 @lru_cache

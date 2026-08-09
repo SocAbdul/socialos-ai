@@ -2,10 +2,9 @@ import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-const API_URL =
-  process.env.API_INTERNAL_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8000/api/v1";
+import { apiInternalUrl } from "@/lib/runtime-config";
+
+const API_URL = apiInternalUrl();
 
 const developmentIdentity = {
   "X-User-Id": "user_local_founder",

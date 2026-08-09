@@ -162,7 +162,7 @@ class MetaSocialProvider:
         self._require_configured()
         params = {
             "client_id": self._settings.meta_app_id,
-            "redirect_uri": self._settings.meta_redirect_uri,
+            "redirect_uri": self._settings.resolved_meta_redirect_uri,
             "state": state,
             "config_id": self._settings.meta_login_config_id,
             "response_type": "code",
@@ -178,7 +178,7 @@ class MetaSocialProvider:
                 {
                     "client_id": self._settings.meta_app_id,
                     "client_secret": self._settings.meta_app_secret,
-                    "redirect_uri": self._settings.meta_redirect_uri,
+                    "redirect_uri": self._settings.resolved_meta_redirect_uri,
                     "code": code,
                 },
             )

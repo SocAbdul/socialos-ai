@@ -17,3 +17,13 @@ async def test_api_responses_include_security_headers() -> None:
     assert response.headers["Permissions-Policy"] == (
         "camera=(), microphone=(), geolocation=(), payment=()"
     )
+    assert len(response.headers["X-Request-ID"]) == 32
+
+
+@pytest.mark.asyncio
+async def test_valid_correlation_id_is_preserved() -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/health/live", headers={"X-Request-ID": "request-test-1234"})
+
+    assert response.headers["X-Request-ID"] == "request-test-1234"

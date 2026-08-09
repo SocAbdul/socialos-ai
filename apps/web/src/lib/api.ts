@@ -2,6 +2,8 @@ import "server-only";
 
 import { z } from "zod";
 
+import { apiInternalUrl } from "@/lib/runtime-config";
+
 const postSchema = z.object({
   id: z.string().uuid(),
   organization_id: z.string().min(1),
@@ -195,6 +197,7 @@ const mediaAssetSchema = z.object({
   storage_url: z.string().url(),
   content_type: z.string(),
   checksum_sha256: z.string(),
+  storage_provider: z.string(),
   storage_key: z.string(),
   size_bytes: z.number().int().nonnegative(),
 });
@@ -293,10 +296,7 @@ const metaSessionSchema = z.object({
 });
 export type MetaOAuthSession = z.infer<typeof metaSessionSchema>;
 
-const API_URL =
-  process.env.API_INTERNAL_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8000/api/v1";
+const API_URL = apiInternalUrl();
 
 // Explicit fallback identity used only when Clerk is disabled for local development.
 const developmentIdentity = {
@@ -840,6 +840,8 @@ export async function registerMediaAsset(
     storage_url: string;
     content_type: string;
     checksum_sha256: string;
+    storage_key?: string;
+    size_bytes?: number;
   },
 ): Promise<MediaAsset | null> {
   try {

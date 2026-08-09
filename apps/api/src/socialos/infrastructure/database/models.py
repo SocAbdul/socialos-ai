@@ -159,6 +159,7 @@ class MediaAssetModel(UUIDPrimaryKeyMixin, Base):
     storage_url: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str] = mapped_column(String(128), nullable=False)
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_provider: Mapped[str] = mapped_column(String(32), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

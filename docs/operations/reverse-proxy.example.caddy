@@ -1,0 +1,16 @@
+# Template only. Supply upstreams and TLS through deployment configuration.
+{$APP_HOST} {
+  encode zstd gzip
+  handle /api/* {
+    reverse_proxy {$API_UPSTREAM}
+  }
+  handle /health/* {
+    reverse_proxy {$API_UPSTREAM}
+  }
+  handle /media/* {
+    reverse_proxy {$MEDIA_UPSTREAM}
+  }
+  handle {
+    reverse_proxy {$WEB_UPSTREAM}
+  }
+}

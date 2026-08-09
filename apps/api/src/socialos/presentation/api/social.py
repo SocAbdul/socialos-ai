@@ -356,6 +356,8 @@ class RegisterMediaAssetRequest(BaseModel):
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
     ]
     checksum_sha256: str = Field(min_length=64, max_length=64)
+    storage_key: str = Field(default="legacy", min_length=1, max_length=512)
+    size_bytes: int = Field(default=0, ge=0)
 
 
 class RequestMediaUploadRequest(BaseModel):
@@ -384,6 +386,7 @@ class MediaAssetResponse(BaseModel):
     storage_url: str
     content_type: str
     checksum_sha256: str
+    storage_provider: str
     storage_key: str
     size_bytes: int
 
@@ -396,6 +399,7 @@ class MediaAssetResponse(BaseModel):
             storage_url=asset.storage_url,
             content_type=asset.content_type,
             checksum_sha256=asset.checksum_sha256,
+            storage_provider=asset.storage_provider,
             storage_key=asset.storage_key,
             size_bytes=asset.size_bytes,
         )
@@ -611,7 +615,7 @@ async def meta_authorize(
                 workspace_id=workspace_id,
                 user_id=actor.user_id,
                 provider="meta",
-                redirect_uri=get_settings().meta_redirect_uri,
+                redirect_uri=get_settings().resolved_meta_redirect_uri,
                 connection_intent=request.connection_intent,
                 return_to=request.return_to,
                 target_connection_id=request.connection_id,
@@ -638,7 +642,7 @@ async def meta_callback(
                 state=request.state,
                 user_id=actor.user_id,
                 provider="meta",
-                redirect_uri=get_settings().meta_redirect_uri,
+                redirect_uri=get_settings().resolved_meta_redirect_uri,
             )
             await session.commit()
             session_id = await MetaIntegrationService(
@@ -959,16 +963,31 @@ async def register_media_asset(
     request: RegisterMediaAssetRequest,
     actor: Annotated[Actor, Depends(get_actor)],
 ) -> MediaAssetResponse:
-    asset = await RegisterMediaAsset(SqlAlchemyUnitOfWork).execute(
-        actor,
-        RegisterMediaAssetCommand(
-            workspace_id=workspace_id,
-            media_type=request.media_type,
-            storage_url=str(request.storage_url),
-            content_type=request.content_type,
-            checksum_sha256=request.checksum_sha256,
-        ),
-    )
+    settings = get_settings()
+    expected_public_prefix = f"{settings.resolved_media_public_base_url}/"
+    if settings.media_storage_provider != "local" and not str(request.storage_url).startswith(
+        expected_public_prefix
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Media URL does not belong to the configured storage provider",
+        )
+    try:
+        asset = await RegisterMediaAsset(SqlAlchemyUnitOfWork).execute(
+            actor,
+            RegisterMediaAssetCommand(
+                workspace_id=workspace_id,
+                media_type=request.media_type,
+                storage_url=str(request.storage_url),
+                content_type=request.content_type,
+                checksum_sha256=request.checksum_sha256,
+                storage_provider=settings.media_storage_provider,
+                storage_key=request.storage_key,
+                size_bytes=request.size_bytes,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return MediaAssetResponse.from_domain(asset)
 
 

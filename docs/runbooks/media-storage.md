@@ -78,6 +78,8 @@ For S3 deployments:
    - `storage_url` = returned `public_url`.
    - `checksum_sha256` = original SHA-256 digest.
    - `content_type` and `media_type`.
+   - `storage_key` = the opaque key returned by the upload target.
+   - `size_bytes` = the validated source size.
 6. Publications reference the registered `MediaAsset`.
 
 ## Security rules

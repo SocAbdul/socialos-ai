@@ -25,6 +25,11 @@ def configure_clerk_environment(
     monkeypatch.setenv("CLERK_JWKS_URL", "https://clerk.example.test/.well-known/jwks.json")
     monkeypatch.setenv("CLERK_ISSUER", "https://clerk.example.test")
     monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", encryption_key)
+    monkeypatch.setenv("APP_BASE_URL", "https://app.example.test")
+    monkeypatch.setenv("WEB_BASE_URL", "https://app.example.test")
+    monkeypatch.setenv("API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("WEB_ORIGINS", "https://app.example.test")
+    monkeypatch.setenv("SOCIAL_PROVIDER_META_ENABLED", "false")
     if configure_s3:
         monkeypatch.setenv("MEDIA_STORAGE_PROVIDER", "s3")
         monkeypatch.setenv("S3_MEDIA_BUCKET", "socialos-media-test")
@@ -72,6 +77,9 @@ def test_rejects_development_authentication_in_staging(
     monkeypatch.setenv("ENVIRONMENT", "staging")
     monkeypatch.setenv("AUTH_MODE", "development")
     monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", "x" * 48)
+    monkeypatch.setenv("APP_BASE_URL", "https://app.example.test")
+    monkeypatch.setenv("WEB_BASE_URL", "https://app.example.test")
+    monkeypatch.setenv("API_BASE_URL", "https://api.example.test")
 
     with pytest.raises(RuntimeError, match="Development authentication"):
         get_settings()
@@ -115,6 +123,94 @@ def test_accepts_strong_production_configuration(monkeypatch: pytest.MonkeyPatch
     assert settings.environment == "production"
     assert settings.auth_mode == "clerk"
     assert settings.media_storage_provider == "s3"
+
+
+def test_requires_meta_configuration_only_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
+    monkeypatch.setenv("SOCIAL_PROVIDER_META_ENABLED", "true")
+
+    with pytest.raises(RuntimeError, match="Missing required Meta settings"):
+        get_settings()
+
+
+@pytest.mark.parametrize("environment", ["staging", "production"])
+def test_non_local_environments_require_https(
+    monkeypatch: pytest.MonkeyPatch, environment: str
+) -> None:
+    configure_clerk_environment(monkeypatch, environment=environment, encryption_key="x" * 48)
+    monkeypatch.setenv("APP_BASE_URL", "http://app.example.test")
+
+    with pytest.raises(ValidationError, match="APP_BASE_URL"):
+        get_settings()
+
+
+def test_rejects_wildcard_cors_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
+    monkeypatch.setenv("WEB_ORIGINS", "*")
+
+    with pytest.raises(RuntimeError, match="explicit origin allowlist"):
+        get_settings()
+
+
+def test_s3_endpoint_must_use_https_outside_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
+    monkeypatch.setenv("S3_ENDPOINT_URL", "http://minio.internal:9000")
+
+    with pytest.raises(RuntimeError, match="S3_ENDPOINT_URL"):
+        get_settings()
+
+
+def test_s3_compatible_endpoint_requires_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
+    monkeypatch.setenv("S3_ENDPOINT_URL", "https://objects.example.test")
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="require access key"):
+        get_settings()
+
+
+def test_settings_repr_does_not_expose_secrets() -> None:
+    settings = get_settings().model_copy(
+        update={
+            "token_encryption_key": "token-secret-value",
+            "meta_app_secret": "meta-secret-value",
+            "aws_secret_access_key": "storage-secret-value",
+        }
+    )
+
+    rendered = repr(settings)
+    assert "token-secret-value" not in rendered
+    assert "meta-secret-value" not in rendered
+    assert "storage-secret-value" not in rendered
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("DATABASE_URL", "", "DATABASE_URL"),
+        ("REDIS_URL", "http://redis.example.test", "REDIS_URL"),
+    ],
+)
+def test_rejects_missing_or_invalid_core_dependencies(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str, message: str
+) -> None:
+    configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValidationError, match=message):
+        get_settings()
+
+
+def test_local_environment_accepts_loopback_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "local")
+    monkeypatch.setenv("APP_BASE_URL", "http://localhost:3000")
+    monkeypatch.setenv("WEB_BASE_URL", "http://127.0.0.1:3000")
+    monkeypatch.setenv("API_BASE_URL", "http://localhost:8000")
+
+    settings = get_settings()
+
+    assert settings.environment == "local"
 
 
 def test_production_s3_configuration_does_not_require_static_aws_keys(
