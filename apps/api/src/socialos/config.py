@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     meta_redirect_uri: str = "http://localhost:3000/integrations/meta/callback"
     meta_graph_api_version: str = "v25.0"
     social_provider: SocialProviderMode = "local-dev"
+    social_provider_meta_enabled: bool = True
+    social_provider_linkedin_enabled: bool = False
+    social_provider_youtube_enabled: bool = False
+    social_provider_tiktok_enabled: bool = False
+    social_provider_reddit_enabled: bool = False
     ai_provider: str = "local"
     ai_model: str = "socialos-local-v1"
     media_storage_provider: MediaStorageProvider = "local"

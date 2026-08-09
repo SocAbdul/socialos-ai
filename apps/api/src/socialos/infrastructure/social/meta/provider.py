@@ -15,35 +15,11 @@ from socialos.application.social.ports import (
 )
 from socialos.config import Settings
 from socialos.domain.social import Platform, PlatformConnection, SocialAccount, SocialAccountType
+from socialos.infrastructure.providers.registry import (
+    FACEBOOK_CAPABILITIES,
+    INSTAGRAM_CAPABILITIES,
+)
 from socialos.infrastructure.security.token_cipher import FernetTokenCipher
-
-FACEBOOK_CAPABILITIES = SocialProviderCapabilities(
-    supports_text=True,
-    supports_single_image=True,
-    supports_multiple_images=False,
-    supports_video=False,
-    supports_reels=False,
-    supports_stories=False,
-    supports_scheduling=False,
-    supports_delete=False,
-    max_text_length=63_206,
-    supported_media_types=("image/jpeg", "image/png"),
-    daily_publication_limit=None,
-)
-
-INSTAGRAM_CAPABILITIES = SocialProviderCapabilities(
-    supports_text=False,
-    supports_single_image=True,
-    supports_multiple_images=False,
-    supports_video=False,
-    supports_reels=False,
-    supports_stories=False,
-    supports_scheduling=False,
-    supports_delete=False,
-    max_text_length=2_200,
-    supported_media_types=("image/jpeg", "image/png"),
-    daily_publication_limit=100,
-)
 
 
 class MetaProviderConfigurationError(RuntimeError):

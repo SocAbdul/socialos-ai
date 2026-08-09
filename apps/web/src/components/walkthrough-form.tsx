@@ -15,7 +15,15 @@ import {
 
 const initialState: WalkthroughActionState = { errors: {}, message: null };
 
-export function WalkthroughForm({ connectedPlatforms, workspaceId }: { connectedPlatforms: Array<"facebook" | "instagram">; workspaceId: string }) {
+export type ComposerPlatform = {
+  provider: string;
+  platform: string;
+  displayName: string;
+  supportsText: boolean;
+  supportsSingleImage: boolean;
+};
+
+export function WalkthroughForm({ platforms, workspaceId }: { platforms: ComposerPlatform[]; workspaceId: string }) {
   const [state, formAction] = useActionState(createWalkthroughPublicationAction, initialState);
   const [clientErrors, setClientErrors] = useState<WalkthroughFieldErrors>({});
   const [file, setFile] = useState<File | null>(null);
@@ -57,14 +65,13 @@ export function WalkthroughForm({ connectedPlatforms, workspaceId }: { connected
       <fieldset className="grid gap-3 rounded-2xl border border-zinc-200 p-4">
         <legend className="px-2 text-sm font-semibold">Publish to</legend>
         <div className="flex flex-wrap gap-4">
-          <PlatformChoice disabled={!connectedPlatforms.includes("facebook")} name="facebook" label="Facebook Page" />
-          <PlatformChoice disabled={!connectedPlatforms.includes("instagram")} name="instagram" label="Instagram professional" />
+          {platforms.map((platform) => <PlatformChoice disabled={!platform.supportsSingleImage} key={`${platform.provider}:${platform.platform}`} label={platform.displayName} value={platform.platform} />)}
         </div>
+        {platforms.length === 0 ? <p className="text-xs text-amber-700">Connect an implemented account with single-image support to publish.</p> : null}
         {errors.platforms ? <p className="text-xs font-medium text-red-600" id="platforms-error">{errors.platforms}</p> : null}
       </fieldset>
       <div className="grid gap-4 md:grid-cols-2">
-        <Field error={errors.facebookCaption} label="Facebook caption" maxLength={walkthroughLimits.caption} multiline name="facebookCaption" placeholder="Leave empty to use the local adaptation." />
-        <Field error={errors.instagramCaption} label="Instagram caption" maxLength={walkthroughLimits.caption} multiline name="instagramCaption" placeholder="Leave empty to use the local adaptation." />
+        {platforms.map((platform) => <Field error={errors[`caption:${platform.platform}`]} key={`${platform.provider}:${platform.platform}`} label={`${platform.displayName} caption`} maxLength={walkthroughLimits.caption} multiline name={`caption:${platform.platform}`} placeholder="Leave empty to use the platform adaptation." />)}
       </div>
       <div className="grid gap-2 text-sm font-semibold text-zinc-700">
         <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 p-5 text-center focus-within:ring-2 focus-within:ring-violet-500"
@@ -75,7 +82,7 @@ export function WalkthroughForm({ connectedPlatforms, workspaceId }: { connected
         {errors.mediaFile ? <p className="text-xs font-medium text-red-600" id="mediaFile-error">{errors.mediaFile}</p> : null}
         {preview ? <div className="relative w-fit"><Image alt="Selected media preview" className="max-h-72 rounded-xl border object-contain" height={720} src={preview} unoptimized width={720} /><button aria-label="Remove selected image" className="absolute right-2 top-2 grid size-11 place-items-center rounded-full bg-white shadow" onClick={() => { setFile(null); const input=formRef.current?.elements.namedItem("mediaFile"); if(input instanceof HTMLInputElement) input.value=""; }} type="button"><X className="size-4" /></button></div> : null}
       </div>
-      {preview ? <div className="grid gap-4 md:grid-cols-2"><Preview title="Facebook preview" image={preview} caption="Your Facebook caption or local adaptation" /><Preview title="Instagram preview" image={preview} caption="Your Instagram caption or local adaptation" /></div> : null}
+      {preview ? <div className="grid gap-4 md:grid-cols-2">{platforms.map((platform) => <Preview caption={`Your ${platform.displayName} caption or local adaptation`} image={preview} key={platform.platform} title={`${platform.displayName} preview`} />)}</div> : null}
       <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600"><input className="mt-1" name="simulateRetryableError" type="checkbox" /><span>Simulate one retryable failure in local development only.</span></label>
       <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950"><p className="font-semibold">Final confirmation</p><p>One independent publication will be created for every selected platform. A failure on one platform will not remove a successful result on another.</p></div>
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -86,7 +93,7 @@ export function WalkthroughForm({ connectedPlatforms, workspaceId }: { connected
   );
 }
 
-function PlatformChoice({ disabled, name, label }: { disabled: boolean; name: "facebook" | "instagram"; label: string }) { return <label className={`flex min-h-11 items-center gap-2 rounded-xl border border-zinc-200 px-4 ${disabled ? "cursor-not-allowed bg-zinc-100 text-zinc-400" : ""}`}><input disabled={disabled} name={name} type="checkbox" /><span>{label}{disabled ? " · Not connected" : ""}</span></label>; }
+function PlatformChoice({ disabled, value, label }: { disabled: boolean; value: string; label: string }) { return <label className={`flex min-h-11 items-center gap-2 rounded-xl border border-zinc-200 px-4 ${disabled ? "cursor-not-allowed bg-zinc-100 text-zinc-400" : ""}`}><input disabled={disabled} name="platform" type="checkbox" value={value} /><span>{label}{disabled ? " · Not connected" : ""}</span></label>; }
 function Preview({ title, image, caption }: { title: string; image: string; caption: string }) { return <article className="overflow-hidden rounded-2xl border border-zinc-200 bg-white"><p className="p-3 text-sm font-semibold">{title}</p><Image alt="" className="aspect-square w-full object-cover" height={720} src={image} unoptimized width={720} /><p className="p-3 text-sm text-zinc-600">{caption}</p></article>; }
 function Field({ error, label, maxLength, multiline=false, name, placeholder }: { error?: string; label: string; maxLength: number; multiline?: boolean; name: WalkthroughField; placeholder: string }) { const props={"aria-describedby":error?`${name}-error`:undefined,"aria-invalid":Boolean(error),className:`rounded-xl border bg-white px-3 text-sm font-normal outline-none ring-violet-500 focus:ring-2 ${multiline?"min-h-28 py-2":"h-11"} ${error?"border-red-400":"border-zinc-200"}`,id:name,maxLength,name,placeholder}; return <div className="grid gap-2 text-sm font-semibold text-zinc-700"><label htmlFor={name}>{label}</label>{multiline?<textarea {...props}/>:<input {...props}/>} {error?<p className="text-xs font-medium text-red-600" id={`${name}-error`}>{error}</p>:null}</div>; }
 function focusFirstInvalid(form: HTMLFormElement | null, errors: WalkthroughFieldErrors) { if(!form)return; const first=Object.keys(errors)[0] as WalkthroughField|undefined; const element=first?form.elements.namedItem(first):null; if(element instanceof HTMLElement)element.focus(); }

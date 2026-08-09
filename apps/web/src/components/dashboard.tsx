@@ -36,11 +36,13 @@ import type {
   PlatformConnection,
   Publication,
   PublicationDetail,
+  ProviderCatalog,
   SocialAccount,
   SocialPost,
   Workspace,
 } from "@/lib/api";
 import { groupPublicationAttempts } from "@/lib/publication-attempts";
+import { implementedConnectedImagePlatforms } from "@/lib/provider-catalog";
 import { accountsForProvider } from "@/lib/social-account-selection";
 
 export function Dashboard({
@@ -53,6 +55,7 @@ export function Dashboard({
   notice,
   posts,
   publicationDetail,
+  providerCatalog,
   publications,
   socialAccounts,
   socialProvider,
@@ -67,6 +70,7 @@ export function Dashboard({
   notice: string | null;
   posts: SocialPost[];
   publicationDetail: PublicationDetail | null;
+  providerCatalog: ProviderCatalog;
   publications: Publication[];
   socialAccounts: SocialAccount[];
   socialProvider: "local-dev" | "meta";
@@ -340,6 +344,7 @@ export function Dashboard({
             contentItems={contentItems}
             connections={connections}
             mediaAssets={mediaAssets}
+            providerCatalog={providerCatalog}
             socialAccounts={socialAccounts}
             socialProvider={socialProvider}
             workspace={workspace}
@@ -360,6 +365,7 @@ function LocalPublishingWalkthrough({
   contentItems,
   connections,
   mediaAssets,
+  providerCatalog,
   socialAccounts,
   socialProvider,
   workspace,
@@ -369,6 +375,7 @@ function LocalPublishingWalkthrough({
   contentItems: ContentItem[];
   connections: PlatformConnection[];
   mediaAssets: MediaAsset[];
+  providerCatalog: ProviderCatalog;
   socialAccounts: SocialAccount[];
   socialProvider: "local-dev" | "meta";
   workspace: Workspace | null;
@@ -389,6 +396,16 @@ function LocalPublishingWalkthrough({
   );
   const visibleConnections =
     socialProvider === "meta" ? metaConnections : localConnections;
+  const catalogPlatforms = implementedConnectedImagePlatforms(providerCatalog);
+  const composerPlatforms = socialProvider === "meta"
+    ? catalogPlatforms
+      : visibleAccounts.map((account) => ({
+        provider: "local-dev",
+        platform: account.platform,
+        displayName: account.platform.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+        supportsText: Boolean(account.capabilities.supports_text),
+        supportsSingleImage: Boolean(account.capabilities.supports_single_image),
+      }));
   if (!workspace) {
     return (
       <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">
@@ -466,7 +483,7 @@ function LocalPublishingWalkthrough({
         </div>
 
         <WalkthroughForm
-          connectedPlatforms={visibleAccounts.map((account) => account.platform)}
+          platforms={composerPlatforms}
           workspaceId={workspace.id}
         />
       </div>
