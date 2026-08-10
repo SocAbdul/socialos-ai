@@ -21,6 +21,7 @@ def configure_clerk_environment(
     configure_s3: bool = True,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", environment)
+    monkeypatch.setenv("RELEASE_SHA", "a" * 40)
     monkeypatch.setenv("AUTH_MODE", "clerk")
     monkeypatch.setenv("CLERK_JWKS_URL", "https://clerk.example.test/.well-known/jwks.json")
     monkeypatch.setenv("CLERK_ISSUER", "https://clerk.example.test")
@@ -29,6 +30,7 @@ def configure_clerk_environment(
     monkeypatch.setenv("WEB_BASE_URL", "https://app.example.test")
     monkeypatch.setenv("API_BASE_URL", "https://api.example.test")
     monkeypatch.setenv("WEB_ORIGINS", "https://app.example.test")
+    monkeypatch.setenv("TRUSTED_HOSTS", "app.example.test,api,localhost,127.0.0.1")
     monkeypatch.setenv("SOCIAL_PROVIDER_META_ENABLED", "false")
     if configure_s3:
         monkeypatch.setenv("MEDIA_STORAGE_PROVIDER", "s3")
@@ -75,6 +77,7 @@ def test_rejects_development_authentication_in_staging(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "staging")
+    monkeypatch.setenv("RELEASE_SHA", "a" * 40)
     monkeypatch.setenv("AUTH_MODE", "development")
     monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", "x" * 48)
     monkeypatch.setenv("APP_BASE_URL", "https://app.example.test")
@@ -123,6 +126,22 @@ def test_accepts_strong_production_configuration(monkeypatch: pytest.MonkeyPatch
     assert settings.environment == "production"
     assert settings.auth_mode == "clerk"
     assert settings.media_storage_provider == "s3"
+
+
+def test_rejects_mutable_release_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
+    monkeypatch.setenv("RELEASE_SHA", "latest")
+
+    with pytest.raises(ValidationError, match="RELEASE_SHA"):
+        get_settings()
+
+
+def test_rejects_wildcard_trusted_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_clerk_environment(monkeypatch, encryption_key="x" * 48)
+    monkeypatch.setenv("TRUSTED_HOSTS", "*")
+
+    with pytest.raises(RuntimeError, match="TRUSTED_HOSTS"):
+        get_settings()
 
 
 def test_requires_meta_configuration_only_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -159,3 +159,18 @@ cd C:\dev\socialos-ai
 `MEDIA_STORAGE_PROVIDER=local-public` stores validated JPEG/PNG uploads in a persistent local mount for the zero-cost preview. The dashboard uploads files directly to the API and stores only metadata in PostgreSQL. Staging and production still require `MEDIA_STORAGE_PROVIDER=s3`. See `docs/runbooks/media-storage.md`.
 
 Never paste `META_APP_SECRET`, authorization codes, access tokens, AWS secrets or signed media URLs into chat or logs.
+
+## Staging deployment preparation
+
+The reviewed staging target is a single Hetzner VM with Cloudflare R2 media storage. The repository currently prepares deployment only; it does not provision or contact either provider.
+
+```powershell
+Copy-Item .env.staging.example .env.staging
+# Populate the ignored file through a secure channel, then validate offline:
+python scripts/staging_preflight.py --env-file .env.staging
+docker compose --env-file .env.staging -f docker-compose.staging.yml config --quiet
+```
+
+See [Hetzner staging deployment](docs/runbooks/hetzner-staging-deployment.md), [R2 configuration](docs/runbooks/r2-staging-configuration.md), [PostgreSQL backup/restore](docs/runbooks/postgres-backup-restore.md), [Meta cutover](docs/runbooks/meta-staging-cutover.md), and the [security checklist](docs/operations/staging-security-checklist.md).
+
+> **COST BOUNDARY — 0 €:** no hosting, domain, bucket, DNS, billing, Meta change, OAuth, social publication or external deployment has been created or executed. Stop before the first provider account/resource action and obtain explicit authorization.
