@@ -30,13 +30,13 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.1.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.13.4",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.3.5",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.1.0",
     "typescript": "6.0.3",
